@@ -3,7 +3,7 @@ import json
 import sys
 from pathlib import Path
 root=Path(__file__).resolve().parents[1]
-names=['README.md','package.json','package-lock.json','.gitignore','.vercelignore','.env.example','index.py','pyproject.toml','pytest.ini','vercel.json','compose.yaml','start-local-collection.cmd']
+names=['README.md','package.json','package-lock.json','.gitignore','.vercelignore','.env.example','index.py','pyproject.toml','requirements.txt','pytest.ini','vercel.json','compose.yaml','start-local-collection.cmd']
 files=[root/name for name in names]
 for directory in ['extension','local-test','student-test','scripts','server','docs','policy','deploy','.github']:
     files.extend((root/directory).rglob('*'))

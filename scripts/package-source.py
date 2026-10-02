@@ -3,7 +3,7 @@ from pathlib import Path
 import zipfile
 root=Path(__file__).resolve().parents[1]
 destination=root.parent/'classroom-pilot-project.zip'
-files=[root/name for name in ['README.md','package.json','package-lock.json','.gitignore','compose.yaml','start-local-collection.cmd','index.py','pyproject.toml','vercel.json','.env.example','.vercelignore','pytest.ini']]
+files=[root/name for name in ['README.md','package.json','package-lock.json','.gitignore','compose.yaml','start-local-collection.cmd','index.py','pyproject.toml','requirements.txt','vercel.json','.env.example','.vercelignore','pytest.ini']]
 for directory in ['extension','scripts','policy','docs','dist','server','deploy','local-test','local-test-dist','student-test','student-test-dist','.github']:
     for item in (root/directory).rglob('*'):
         if not item.is_file(): continue

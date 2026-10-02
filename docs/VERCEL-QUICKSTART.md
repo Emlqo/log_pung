@@ -4,7 +4,7 @@
 
 ## 선생님이 하는 순서
 
-1. Vercel 로그인 → **Add New → Project** → GitHub의 **Emlqo/log_pung** Import. 비공개 저장소도 연결 가능하며, GitHub 앱의 저장소 접근 허용이 필요할 수 있습니다. Root Directory는 프로젝트 루트입니다. Framework는 FastAPI, Python 3.12, `index:app`입니다. Docker·Caddy는 이 배포에 사용하지 않습니다.
+1. Vercel 로그인 → **Add New → Project** → GitHub의 **Emlqo/log_pung** Import. 비공개 저장소도 연결 가능하며, GitHub 앱의 저장소 접근 허용이 필요할 수 있습니다. Root Directory는 프로젝트 루트입니다. Python 3.12 서버입니다. `vercel.json`이 `index.py`를 `@vercel/python` 함수로 빌드하고 모든 경로를 그 함수로 연결합니다. 확장 프로그램의 npm 빌드 결과를 정적 사이트로 배포하지 않습니다. Docker·Caddy는 이 배포에 사용하지 않습니다.
 2. 프로젝트 Storage/Marketplace에서 PostgreSQL을 연결합니다. 공급자의 비용·계약 동의는 선생님이 확인하고 진행합니다. 제공되는 **pooled connection URL**을 `DATABASE_URL` 환경변수로 지정합니다. `postgres://`, `postgresql://` 주소는 psycopg 형식으로 자동 변환합니다. 외부 DB에는 공급자 권장 TLS(`sslmode=require` 등)를 유지하세요. SQLite 파일·메모리 세션은 Vercel 저장소로 사용하지 않습니다.
 3. Vercel 환경변수에 다음을 입력합니다. 실제 값은 GitHub에 커밋하지 않습니다.
 
@@ -44,3 +44,11 @@ Vercel/GitHub에 올리는 것은 **서버 배포**이며 확장 강제 설치�
 학생 게시용 ZIP에는 수집 권한이 있으므로 이전 진단 전용 자체 호스팅 스크립트가 의도적으로 거부합니다. 학생 수집 CRX 자체 호스팅은 이번 구현에 준비하지 않았습니다. 서버 사이트 주소나 ZIP을 관리자 콘솔의 맞춤 업데이트 URL로 입력하지 않습니다.
 
 [Vercel FastAPI 배포](https://vercel.com/docs/frameworks/backend/fastapi), [Vercel GitHub 연결](https://vercel.com/docs/git/vercel-for-github)
+
+## Python 파일이 다운로드될 때
+
+GitHub 최신 커밋이 배포되었는지 Vercel **Deployments**에서 확인하고, **최신 배포의 Visit**을 여세요. 이전 배포의 고유 URL은 계속 이전 버전입니다. 자동 배포가 없으면 최신 main으로 새 배포를 만듭니다. Root Directory는 저장소 루트(`./`)이며 Output Directory 임의 설정은 해제합니다.
+
+이 프로젝트는 자동 감지에만 의존하지 않도록 지원되는 명시적 Python builder와 전체 경로 라우팅을 사용합니다. `builds`는 레거시 설정이지만 이번 오류 복구에 사용했으며 향후 기본 FastAPI 배포로 전환할 수 있습니다. 정적 파일은 별도 게시하지 않고 교사 HTML/JS도 인증 후 서버가 제공합니다. `/health`는 JSON, `/`는 교사 로그인, `/index.py`는 404가 정상입니다. DB 초기화는 ASGI 시작 이벤트가 없는 환경에서도 첫 데이터 요청에 실행됩니다. PostgreSQL 초기화·동시 시작은 실제 외부 DB에서 추가 검증해야 합니다.
+
+[Vercel Python runtime](https://vercel.com/docs/functions/runtimes/python), [명시적 builds와 routes](https://vercel.com/docs/project-configuration/vercel-json)

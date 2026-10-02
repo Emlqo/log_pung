@@ -5,6 +5,7 @@ import json
 import os
 import re
 import time
+from threading import Lock
 from pathlib import Path
 from uuid import uuid4
 from contextlib import asynccontextmanager
@@ -13,7 +14,8 @@ from fastapi import FastAPI, Depends, HTTPException, Request
 from fastapi.security import HTTPBasic
 from fastapi.responses import HTMLResponse, Response, JSONResponse
 from pydantic import ConfigDict, Field, field_validator
-from sqlalchemy import create_engine, Column, String, BigInteger, Integer, Text, select, delete
+from sqlalchemy import create_engine, Column, String, BigInteger, Integer, Text, select, delete, text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import DeclarativeBase, Session
 from sqlalchemy.pool import NullPool
 try:
@@ -78,14 +80,25 @@ def create_student_app(cfg=None):
     if cfg.database_url and os.getenv('VERCEL') and not cfg.database_url.startswith('postgresql+psycopg://'):
         raise ValueError('Vercel에는 외부 PostgreSQL DATABASE_URL이 필요합니다.')
     engine=create_engine(cfg.database_url, poolclass=NullPool, connect_args={'check_same_thread':False} if cfg.database_url.startswith('sqlite') else {}) if cfg.database_url else None
+    initialized=False
+    initialization_lock=Lock()
+    def initialize_database():
+        # Some serverless adapters do not send ASGI lifespan events.
+        nonlocal initialized
+        if initialized or not engine:return
+        with initialization_lock:
+            if initialized:return
+            with engine.begin() as connection:
+                if engine.dialect.name=='postgresql':
+                    # Serialize initial DDL across concurrently starting instances.
+                    connection.execute(text('SELECT pg_advisory_xact_lock(724019062)'))
+                StudentBase.metadata.create_all(connection)
+                connection.execute(delete(StudentEvent).where(StudentEvent.received<now()-86400000))
+                connection.execute(delete(StudentStatus).where(StudentStatus.received<now()-86400000))
+            initialized=True
     @asynccontextmanager
     async def lifespan(_app):
-        if engine:
-            StudentBase.metadata.create_all(engine)
-            with Session(engine) as db:
-                db.execute(delete(StudentEvent).where(StudentEvent.received<now()-86400000))
-                db.execute(delete(StudentStatus).where(StudentStatus.received<now()-86400000))
-                db.commit()
+        initialize_database()
         yield
         if engine:engine.dispose()
     app=FastAPI(title='학교 이메일 수집 시험',lifespan=lifespan,docs_url=None,redoc_url=None,openapi_url=None)
@@ -98,6 +111,8 @@ def create_student_app(cfg=None):
     def ready():
         if not engine or not cfg.enabled or not re.fullmatch(r'[A-Za-z0-9_-]{1,64}',cfg.school_id) or len(cfg.accounts) not in (2,3) or len(set(cfg.accounts))!=len(cfg.accounts) or any(not re.fullmatch(r'[^@\s]+@goedu\.kr',x) for x in cfg.accounts):
             raise HTTPException(503,'서버 설정·시험 계정 2~3명·시험 활성화 필요')
+        try:initialize_database()
+        except SQLAlchemyError:raise HTTPException(503,'데이터베이스 연결·초기화 확인 필요') from None
     def target(report):
         ready()
         if report.school_id!=cfg.school_id or report.email not in cfg.accounts:raise HTTPException(403,'시험 대상 아님')

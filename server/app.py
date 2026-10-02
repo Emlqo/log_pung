@@ -24,7 +24,7 @@ load_dotenv(Path(__file__).with_name('.env'))
 
 @dataclass
 class Settings:
-    database_url: str = os.getenv('DATABASE_URL', 'sqlite:///./pilot.db')
+    database_url: str = os.getenv('DATABASE_URL') or 'sqlite:///./pilot.db'
     client_id: str = os.getenv('GOOGLE_CLIENT_ID', '')
     school_id: str = os.getenv('SCHOOL_ID', '')
     accounts: tuple = tuple(x.strip().lower() for x in os.getenv('TEST_ACCOUNT_EMAILS', '').split(',') if x.strip())
@@ -99,7 +99,10 @@ def create_app(settings: Settings | None = None, verifier=verify_google):
     cfg = settings or Settings()
     if cfg.device_policy not in ('allowlist', 'diagnostic') or not 1 <= cfg.retention_days <= 90:
         raise ValueError('서버 기기 정책 또는 보관 기간 오류')
-    engine = create_engine(cfg.database_url, connect_args={'check_same_thread': False} if cfg.database_url.startswith('sqlite') else {})
+    database_url = cfg.database_url
+    if database_url.startswith(('postgres://', 'postgresql://')):
+        database_url = 'postgresql+psycopg://' + database_url.split('://', 1)[1]
+    engine = create_engine(database_url, connect_args={'check_same_thread': False} if database_url.startswith('sqlite') else {})
     @asynccontextmanager
     async def lifespan(_app):
         Base.metadata.create_all(engine)
