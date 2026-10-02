@@ -5,10 +5,17 @@
   "crxUrl": "https://log-pung.vercel.app/distribution/student-email-test-0.2.0.crx",
   "version": "0.2.0",
   "sha256": "429c0d4ccbb74a2a9325e5ae4a98ac603b9449a6b07545c351cd055bc84d5c2a",
-  "externalHostingVerified": false,
+  "externalHostingVerified": true,
   "policyInstallVerified": false,
   "deviceIdentityVerified": false,
   "silentAuthVerified": false,
   "studentAuthenticated": false,
-  "mode": "diagnostic until explicit device allowlist and teacher window"
+  "mode": "diagnostic until explicit device allowlist and teacher window",
+  "hostingVerification": {
+    "xmlHttpStatus": 200,
+    "crxHttpStatus": 200,
+    "crxMime": "application/x-chrome-extension",
+    "crxMatchesSignedLocalFile": true,
+    "checkedDateKST": "2026-10-02"
+  }
 }

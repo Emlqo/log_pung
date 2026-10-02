@@ -1,3 +1,5 @@
+자체 호스팅 외부 확인 완료(2026-10-02): Vercel main 배포 a7006c9 성공. Production updates.xml HTTP 200/application/xml, CRX HTTP 200/application/x-chrome-extension. 로그인 없이 접근했고 CRX 10,813바이트 및 SHA-256이 로컬 서명 파일과 일치했습니다. 실제 학교 ChromeOS 설치와 기기 정보는 아직 미검증입니다.
+
 ## 2026-10-02 학생 CRX 자체 호스팅
 
 학생용 서명 프로필과 빌드·배포 도구, Vercel 공개 XML/CRX endpoint, 실제 원점/ID의 진단 설정을 추가했습니다. 기존 기록 수집 없는 진단 서명 도구의 제한은 유지합니다. 개인 RSA 키는 프로젝트 밖 담당자 ACL로 보관하고 공개 서명 패키지만 커밋합니다.
