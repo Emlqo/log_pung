@@ -1,3 +1,5 @@
+2026-10-02 현장 설정 수정: 관리자 콘솔 JSON에 필요한 각 정책의 Value 래퍼를 누락해 안내한 오류를 수정했습니다. 별도 admin-console 정책 파일을 제공하며 래퍼 해제 후 실제 config 검증 함수가 진단 설정을 올바르게 읽는 것을 확인했습니다. 실제 학생 기기에 정책 값이 전달되는지는 chrome://policy에서 확인해야 합니다. CRX·확장 실행 코드는 변경하지 않았습니다.
+
 자체 호스팅 외부 확인 완료(2026-10-02): Vercel main 배포 a7006c9 성공. Production updates.xml HTTP 200/application/xml, CRX HTTP 200/application/x-chrome-extension. 로그인 없이 접근했고 CRX 10,813바이트 및 SHA-256이 로컬 서명 파일과 일치했습니다. 실제 학교 ChromeOS 설치와 기기 정보는 아직 미검증입니다.
 
 ## 2026-10-02 학생 CRX 자체 호스팅

@@ -1,0 +1,8 @@
+{
+  "serverUrl": {"Value": "https://log-pung.vercel.app"},
+  "schoolId": {"Value": "school-pilot"},
+  "testEnabled": {"Value": true},
+  "intervalMinutes": {"Value": 5},
+  "devicePolicy": {"Value": "diagnostic"},
+  "allowedDeviceIds": {"Value": []}
+}

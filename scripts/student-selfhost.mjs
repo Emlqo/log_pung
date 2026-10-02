@@ -14,5 +14,6 @@ await writeFile(destination+'/'+r.name,r.crx);
 await writeFile(destination+'/updates.xml.tmp',r.xml);await rename(destination+'/updates.xml.tmp',destination+'/updates.xml');
 const policy={serverUrl:base.origin,schoolId:'school-pilot',testEnabled:true,intervalMinutes:5,devicePolicy:'diagnostic',allowedDeviceIds:[]};
 await writeFile('policy/student-selfhost-diagnostic.json',JSON.stringify(policy,null,2)+'\n');
+await writeFile('policy/student-selfhost-admin-console.json',JSON.stringify(Object.fromEntries(Object.entries(policy).map(([name,value])=>[name,{Value:value}])),null,2)+'\n');
 await writeFile('policy/student-selfhost-inputs.json',JSON.stringify({...r.inputs,studentAuthenticated:false,mode:'diagnostic until explicit device allowlist and teacher window'},null,2)+'\n');
 console.log(JSON.stringify({extensionId:r.inputs.extensionId,customUpdateUrl:r.inputs.customUpdateUrl,crx:r.name,signatureVerified:true,policyInstallVerified:false},null,2));

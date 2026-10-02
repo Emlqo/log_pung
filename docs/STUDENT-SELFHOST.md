@@ -10,7 +10,11 @@
 - 배포 출처: **맞춤 URL에서 추가**
 - 맞춤 URL: `https://log-pung.vercel.app/distribution/updates.xml`
 - 저장 후 확장 상세의 **설치 정책 → 강제 설치 → 저장**.
-- 확장 정책 JSON 입력란에 `policy/student-selfhost-diagnostic.json` 내용을 붙여넣고 저장합니다. 서버 주소, 학교 ID, 시험 활성화와 **diagnostic** 모드가 들어 있습니다. JSON 파일을 URL 입력란에 넣지 않습니다.
+- 확장 정책 JSON 입력란에 **`policy/student-selfhost-admin-console.json`** 내용을 붙여넣고 저장합니다. 관리자 콘솔 형식은 각 정책 값을 **`{"Value": ...}`**로 감쌉니다. `student-selfhost-diagnostic.json`은 확장이 storage.managed에서 읽는 평탄한 값의 예시이며 관리자 콘솔에 그대로 붙여넣는 파일이 아닙니다. JSON 파일을 URL 입력란에 넣지 않습니다.
+
+정책을 입력했는데 `Invalid URL`이 계속되면 `chrome://policy`에서 이 확장의 정책 섹션을 찾아 `serverUrl` 값과 상태를 확인하세요. 값이 없으면 선택한 학생 조직/그룹·정책 저장·정책 적용 여부를 확인합니다. 잘못된 형식으로 저장된 정책은 아래 공식 Chromium 형식으로 교체합니다.
+
+[ChromeOS 관리자 콘솔 정책 JSON 형식](https://www.chromium.org/administrators/configuring-policy-for-extensions/)
 
 먼저 위 업데이트 URL이 로그인 없이 XML을 반환하고 XML의 CRX URL이 실제 바이너리를 반환해야 합니다. 교사 화면은 계속 로그인으로 보호됩니다. Vercel 배포 보호가 다운로드를 로그인 페이지로 돌리면 관리자가 승인한 공개 배포 경로가 필요하며, 확장에 공용 보호 우회 키를 넣지 않습니다.
 

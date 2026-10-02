@@ -1,3 +1,5 @@
+관리자 콘솔에 붙여넣는 정책은 `policy/student-selfhost-admin-console.json`처럼 각 값을 `{"Value": ...}`로 감싸야 합니다. 기존 평탄한 managed 예시는 storage.managed에서 읽는 값의 형태이며 콘솔 업로드 형식과 다릅니다. 자세한 설치 절차는 STUDENT-SELFHOST.md를 확인하세요.
+
 # GitHub → Vercel 시험 서버
 
 학생 OAuth를 생략한다는 교사의 변경 요청을 반영한 버전입니다. 학생 이메일은 **인증되지 않은 클라이언트 주장**입니다. 누구나 허용 계정 이메일을 사칭할 수 있으며 기기 ID도 원격 인증된 값이 아닙니다. 교사 조회 로그인은 유지합니다. 기존 OAuth 진단 버전과 교사 본인 로컬 수집 시험은 그대로 보존했습니다.
