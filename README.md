@@ -1,3 +1,5 @@
+학교 Chromebook 자체 호스팅 첫 설치 시험: [관리자에게 입력할 실제 ID·URL과 절차](docs/STUDENT-SELFHOST.md). 처음에는 diagnostic 모드로 설치·계정·기기만 확인합니다.
+
 # 학교 크롬북 배포 진단 시험 — 1단계
 
 ## 현재: GitHub → Vercel 학생 이메일 시험 0.2.0

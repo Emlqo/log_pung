@@ -41,7 +41,7 @@ Vercel/GitHub에 올리는 것은 **서버 배포**이며 확장 강제 설치�
 
 최근 1일 데이터만 조회하고 서버 시작/새 수신에서 만료 기록을 정리합니다. 전역 자동 정리 스케줄은 이 시험에 추가하지 않았습니다. 신뢰할 수 있는 학생 신원 인증이 필요한 운영 단계에는 별도 인증을 다시 적용해야 합니다.
 
-학생 게시용 ZIP에는 수집 권한이 있으므로 이전 진단 전용 자체 호스팅 스크립트가 의도적으로 거부합니다. 학생 수집 CRX 자체 호스팅은 이번 구현에 준비하지 않았습니다. 서버 사이트 주소나 ZIP을 관리자 콘솔의 맞춤 업데이트 URL로 입력하지 않습니다.
+학생 게시용 ZIP에는 수집 권한이 있으므로 이전 진단 전용 자체 호스팅 스크립트가 의도적으로 거부합니다. 학생 CRX는 별도 selfhost:student 도구로 준비했으며 절차는 STUDENT-SELFHOST.md를 따릅니다. 서버 사이트 주소나 ZIP을 관리자 콘솔의 맞춤 업데이트 URL로 입력하지 않습니다.
 
 [Vercel FastAPI 배포](https://vercel.com/docs/frameworks/backend/fastapi), [Vercel GitHub 연결](https://vercel.com/docs/git/vercel-for-github)
 

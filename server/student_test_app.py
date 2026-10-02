@@ -12,7 +12,7 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from fastapi import FastAPI, Depends, HTTPException, Request
 from fastapi.security import HTTPBasic
-from fastapi.responses import HTMLResponse, Response, JSONResponse
+from fastapi.responses import HTMLResponse, Response, JSONResponse, FileResponse
 from pydantic import ConfigDict, Field, field_validator
 from sqlalchemy import create_engine, Column, String, BigInteger, Integer, Text, select, delete, text
 from sqlalchemy.exc import SQLAlchemyError
@@ -133,6 +133,14 @@ def create_student_app(cfg=None):
         return response
     @app.get('/health')
     def health():return {'status':'running','mode':'unverified-email-pilot','student_authenticated':False,'configured':bool(engine and cfg.enabled and len(cfg.accounts) in (2,3))}
+    @app.get('/distribution/{filename}')
+    def distribution(filename:str):
+        # Public signed packages only. Never expose directories, keys or teacher data.
+        if filename!='updates.xml' and not re.fullmatch(r'student-email-test-\d+(?:\.\d+){1,3}\.crx',filename):
+            raise HTTPException(404,'배포 파일 없음')
+        path=Path(__file__).with_name('distribution')/filename
+        if not path.is_file():raise HTTPException(404,'배포 파일 없음')
+        return FileResponse(path,media_type='application/xml' if filename=='updates.xml' else 'application/x-chrome-extension')
     @app.get('/api/student/window')
     def window():
         ready()

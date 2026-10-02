@@ -1,0 +1,14 @@
+{
+  "distribution": "selfhost",
+  "extensionId": "apbdapifnlhfhoebphdafnpdopcgccmi",
+  "customUpdateUrl": "https://log-pung.vercel.app/distribution/updates.xml",
+  "crxUrl": "https://log-pung.vercel.app/distribution/student-email-test-0.2.0.crx",
+  "version": "0.2.0",
+  "sha256": "429c0d4ccbb74a2a9325e5ae4a98ac603b9449a6b07545c351cd055bc84d5c2a",
+  "externalHostingVerified": false,
+  "policyInstallVerified": false,
+  "deviceIdentityVerified": false,
+  "silentAuthVerified": false,
+  "studentAuthenticated": false,
+  "mode": "diagnostic until explicit device allowlist and teacher window"
+}

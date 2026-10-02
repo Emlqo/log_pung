@@ -6,11 +6,12 @@
   "test:local":"node scripts/local-test-build.mjs && node --test local-test/tests/*.test.ts",
   "build:local":"node scripts/local-test-build.mjs",
   "build:student":"node scripts/student-test-build.mjs",
-  "test:student":"npm run build:student && node --test student-test/tests/*.test.ts",
+  "test:student":"npm run build:student && node --test student-test/tests/*.test.ts student-test/tests/*.test.mjs",
   "zip":"node scripts/zip.mjs",
   "keygen":"node scripts/keygen.mjs",
   "key:info":"node scripts/key-info.mjs",
   "selfhost":"node scripts/selfhost.mjs",
+  "selfhost:student":"node scripts/student-selfhost.mjs",
   "verify:crx":"node scripts/verify-crx.mjs",
   "store:inputs":"node scripts/store-inputs.mjs"
  },

@@ -11,7 +11,7 @@ globalThis.fetch=async(url:any,options:any)=>{requests.push({url:String(url),opt
 const worker=await import('../../student-test-dist/student-test/src/worker.js');await worker.tick();
 test('학생 ZIP: OAuth·공유 키 없음, 서버 원점 제한·투명한 수집 권한',()=>{
  const files=unzipSync(fs.readFileSync('student-email-test-0.2.0.zip'));const m=JSON.parse(new TextDecoder().decode(files['manifest.json']));
- assert.equal(m.oauth2,undefined);assert.ok(m.permissions.includes('identity.email'));assert.ok(m.permissions.includes('webNavigation'));assert.ok(!m.permissions.includes('history'));assert.deepEqual(m.host_permissions,['https://pilot.example.invalid/*']);assert.ok(files[m.background.service_worker]);assert.equal(m.incognito,'not_allowed');
+ assert.equal(m.oauth2,undefined);assert.ok(m.permissions.includes('identity.email'));assert.ok(m.permissions.includes('webNavigation'));assert.ok(!m.permissions.includes('history'));assert.deepEqual(m.host_permissions,[(process.env.PILOT_SERVER_ORIGIN||'https://pilot.example.invalid')+'/*']);assert.ok(files[m.background.service_worker]);assert.equal(m.incognito,'not_allowed');
 });
 test('managed 누락·학교 프로필 없음: 대기, 이메일/탐색 전송 안 함',async()=>{
  reset();raw={};await worker.tick('managed_change');assert.equal(requests.length,0);assert.equal(stored.schoolEmailTest.window.active,false);

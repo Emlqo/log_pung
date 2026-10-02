@@ -9,7 +9,6 @@ node_modules
 **/*.pem
 **/*.key
 **/*.zip
-**/*.crx
 dist
 local-test-dist
 student-test-dist

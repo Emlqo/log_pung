@@ -9,6 +9,7 @@ dist/
 *.pem
 *.key
 *.crx
+!server/distribution/student-email-test-*.crx
 release/
 local-test-dist/
 deploy/school-server/secrets/
