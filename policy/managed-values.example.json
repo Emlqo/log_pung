@@ -1,0 +1,8 @@
+{
+  "serverUrl":"https://pilot.school.example",
+  "schoolId":"school-pilot",
+  "testEnabled":false,
+  "intervalMinutes":5,
+  "devicePolicy":"diagnostic",
+  "allowedDeviceIds":[]
+}

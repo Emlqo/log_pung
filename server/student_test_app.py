@@ -1,0 +1,195 @@
+"""Small school pilot: self-reported email, NO student OAuth; teacher login required."""
+import hashlib
+import hmac
+import json
+import os
+import re
+import time
+from pathlib import Path
+from uuid import uuid4
+from contextlib import asynccontextmanager
+from dataclasses import dataclass, field
+from fastapi import FastAPI, Depends, HTTPException, Request
+from fastapi.security import HTTPBasic
+from fastapi.responses import HTMLResponse, Response, JSONResponse
+from pydantic import ConfigDict, Field, field_validator
+from sqlalchemy import create_engine, Column, String, BigInteger, Integer, Text, select, delete
+from sqlalchemy.orm import DeclarativeBase, Session
+from sqlalchemy.pool import NullPool
+try:
+    from .app import Report, password_matches
+    from .local_test_app import Event
+except ImportError:
+    from app import Report, password_matches
+    from local_test_app import Event
+
+LABEL = '인증되지 않은 계정 정보'
+
+@dataclass
+class StudentSettings:
+    database_url: str = field(default_factory=lambda: os.getenv('DATABASE_URL',''))
+    school_id: str = field(default_factory=lambda: os.getenv('SCHOOL_ID','school-pilot'))
+    accounts: tuple = field(default_factory=lambda: tuple(x.strip().lower() for x in os.getenv('TEST_ACCOUNT_EMAILS','').split(',') if x.strip()))
+    device_ids: tuple = field(default_factory=lambda: tuple(x.strip() for x in os.getenv('ALLOWED_DEVICE_IDS','').split(',') if x.strip()))
+    teacher_hash: str = field(default_factory=lambda: os.getenv('TEACHER_PASSWORD_HASH',''))
+    enabled: bool = field(default_factory=lambda: os.getenv('STUDENT_TEST_ENABLED','false')=='true')
+
+class StudentBase(DeclarativeBase): pass
+class StudentStatus(StudentBase):
+    __tablename__='student_email_test_status'
+    email=Column(String(254),primary_key=True)
+    received=Column(BigInteger,nullable=False)
+    data=Column(Text,nullable=False)
+class TestWindow(StudentBase):
+    __tablename__='student_email_test_window'
+    school=Column(String(64),primary_key=True)
+    window_id=Column(String(36),nullable=False)
+    starts=Column(BigInteger,nullable=False)
+    ends=Column(BigInteger,nullable=False)
+class WindowBudget(StudentBase):
+    __tablename__='student_email_test_budget'
+    key=Column(String(64),primary_key=True)
+    count=Column(Integer,nullable=False,default=0)
+class StudentEvent(StudentBase):
+    __tablename__='student_email_test_events'
+    key=Column(String(64),primary_key=True)
+    email=Column(String(254),nullable=False)
+    window_id=Column(String(36),nullable=False)
+    received=Column(BigInteger,nullable=False)
+    data=Column(Text,nullable=False)
+
+class EmailReport(Report):
+    email: str = Field(max_length=254)
+    @field_validator('email')
+    @classmethod
+    def school_email(cls,value):
+        if not re.fullmatch(r'[^@\s]+@goedu\.kr',value.lower()): raise ValueError('학교 이메일 필요')
+        return value.lower()
+class EventReport(EmailReport):
+    window_id: str = Field(min_length=36,max_length=36)
+    events: list[Event] = Field(min_length=1,max_length=20)
+
+def now(): return int(time.time()*1000)
+
+def create_student_app(cfg=None):
+    cfg=cfg or StudentSettings()
+    if cfg.database_url.startswith(('postgres://','postgresql://')):
+        cfg.database_url='postgresql+psycopg://'+cfg.database_url.split('://',1)[1]
+    if cfg.database_url and os.getenv('VERCEL') and not cfg.database_url.startswith('postgresql+psycopg://'):
+        raise ValueError('Vercel에는 외부 PostgreSQL DATABASE_URL이 필요합니다.')
+    engine=create_engine(cfg.database_url, poolclass=NullPool, connect_args={'check_same_thread':False} if cfg.database_url.startswith('sqlite') else {}) if cfg.database_url else None
+    @asynccontextmanager
+    async def lifespan(_app):
+        if engine:
+            StudentBase.metadata.create_all(engine)
+            with Session(engine) as db:
+                db.execute(delete(StudentEvent).where(StudentEvent.received<now()-86400000))
+                db.execute(delete(StudentStatus).where(StudentStatus.received<now()-86400000))
+                db.commit()
+        yield
+        if engine:engine.dispose()
+    app=FastAPI(title='학교 이메일 수집 시험',lifespan=lifespan,docs_url=None,redoc_url=None,openapi_url=None)
+    basic=HTTPBasic(auto_error=False)
+    def teacher(credentials=Depends(basic)):
+        if not cfg.teacher_hash:raise HTTPException(503,'교사 비밀번호 설정 필요')
+        if not credentials or not hmac.compare_digest(credentials.username.encode(),b'teacher') or not password_matches(credentials.password,cfg.teacher_hash):
+            raise HTTPException(401,'교사 로그인 필요',headers={'WWW-Authenticate':'Basic realm="School pilot"'})
+        return 'teacher'
+    def ready():
+        if not engine or not cfg.enabled or not re.fullmatch(r'[A-Za-z0-9_-]{1,64}',cfg.school_id) or len(cfg.accounts) not in (2,3) or len(set(cfg.accounts))!=len(cfg.accounts) or any(not re.fullmatch(r'[^@\s]+@goedu\.kr',x) for x in cfg.accounts):
+            raise HTTPException(503,'서버 설정·시험 계정 2~3명·시험 활성화 필요')
+    def target(report):
+        ready()
+        if report.school_id!=cfg.school_id or report.email not in cfg.accounts:raise HTTPException(403,'시험 대상 아님')
+    def device(report):
+        return bool(report.device_id and report.device_id in cfg.device_ids and report.install_type=='admin' and report.platform=='cros')
+    @app.middleware('http')
+    async def limits(request:Request,call_next):
+        if request.url.path.startswith('/api/'):
+            if len(await request.body())>65536:return JSONResponse({'detail':'본문 크기 제한'},status_code=413)
+        if request.method=='POST' and request.url.path.startswith('/api/teacher/'):
+            origin=request.headers.get('origin')
+            if origin and origin!=str(request.base_url).rstrip('/'):
+                return JSONResponse({'detail':'다른 사이트에서의 교사 조작 거부'},status_code=403)
+        response=await call_next(request)
+        response.headers['Cache-Control']='no-store'
+        response.headers['X-Content-Type-Options']='nosniff'
+        response.headers['Content-Security-Policy']="default-src 'self'; script-src 'self'; style-src 'self'; frame-ancestors 'none'; base-uri 'none'"
+        return response
+    @app.get('/health')
+    def health():return {'status':'running','mode':'unverified-email-pilot','student_authenticated':False,'configured':bool(engine and cfg.enabled and len(cfg.accounts) in (2,3))}
+    @app.get('/api/student/window')
+    def window():
+        ready()
+        with Session(engine) as db:
+            w=db.get(TestWindow,cfg.school_id)
+            if not w or not w.starts<=now()<w.ends:return {'active':False,'student_authenticated':False}
+            return {'active':True,'window_id':w.window_id,'starts_at':w.starts,'ends_at':w.ends,'student_authenticated':False}
+    @app.post('/api/student/status')
+    def status(report:EmailReport):
+        target(report)
+        data=report.model_dump();data['device_state']='confirmed' if device(report) else 'needs_check';data['auth_state']=LABEL
+        with Session(engine) as db:
+            row=db.get(StudentStatus,report.email) or StudentStatus(email=report.email)
+            row.received=now();row.data=json.dumps(data);db.add(row);db.commit()
+        return {'accepted':True,'student_authenticated':False,'device_state':data['device_state']}
+    @app.post('/api/student/events')
+    def events(report:EventReport):
+        target(report)
+        if not device(report):raise HTTPException(403,'정책 설치·ChromeOS·학교 기기 대상 확인 필요')
+        with Session(engine) as db:
+            # Lock a durable window before checking quota, including across Vercel instances.
+            w=db.scalar(select(TestWindow).where(TestWindow.school==cfg.school_id).with_for_update())
+            if not w or not w.starts<=now()<w.ends or w.window_id!=report.window_id:raise HTTPException(403,'수집 시험 시간 아님')
+            if any(e.at<w.starts or e.at>=w.ends or e.at>now()+5000 for e in report.events):raise HTTPException(422,'시험 시간 밖 이벤트')
+            budget_key=hashlib.sha256((report.email+w.window_id).encode()).hexdigest()
+            budget=db.get(WindowBudget,budget_key) or WindowBudget(key=budget_key,count=0)
+            accepted=[]
+            for event in report.events:
+                key=hashlib.sha256((report.email+w.window_id+event.id).encode()).hexdigest()
+                row=db.get(StudentEvent,key);data=json.dumps(event.model_dump(),ensure_ascii=False,sort_keys=True)
+                if row:
+                    if row.data!=data:raise HTTPException(409,'같은 이벤트 ID의 내용 변경 거부')
+                else:
+                    if budget.count>=200:raise HTTPException(429,'계정별 시험 200건 제한')
+                    db.add(StudentEvent(key=key,email=report.email,window_id=w.window_id,received=now(),data=data));budget.count+=1;db.flush()
+                accepted.append(event.id)
+            db.add(budget)
+            db.execute(delete(StudentEvent).where(StudentEvent.received<now()-86400000));db.commit()
+        return {'accepted_ids':accepted,'student_authenticated':False}
+    @app.post('/api/teacher/window/start')
+    def start(_teacher=Depends(teacher)):
+        ready()
+        if not cfg.device_ids:raise HTTPException(409,'실제 학교 기기 ID 목록부터 설정하세요.')
+        with Session(engine) as db:
+            w=db.get(TestWindow,cfg.school_id) or TestWindow(school=cfg.school_id)
+            if w.ends and w.starts<=now()<w.ends:raise HTTPException(409,'이미 진행 중인 시험')
+            w.window_id=str(uuid4());w.starts=now();w.ends=w.starts+600000
+            db.add(w);db.commit()
+            return {'window_id':w.window_id,'starts_at':w.starts,'ends_at':w.ends}
+    @app.post('/api/teacher/window/stop')
+    def stop(_teacher=Depends(teacher)):
+        ready()
+        with Session(engine) as db:
+            w=db.get(TestWindow,cfg.school_id)
+            if w:w.ends=now();db.commit()
+        return {'stopped':True}
+    @app.get('/api/teacher/view')
+    def view(_teacher=Depends(teacher)):
+        ready()
+        with Session(engine) as db:
+            statuses=[{'email':s.email,'received_at':s.received,'delayed':now()-s.received>900000,**json.loads(s.data)} for s in db.scalars(select(StudentStatus).where(StudentStatus.received>=now()-86400000).order_by(StudentStatus.received.desc()))]
+            records=[{'email':e.email,'received_at':e.received,**json.loads(e.data),'auth_state':LABEL} for e in db.scalars(select(StudentEvent).where(StudentEvent.received>=now()-86400000).order_by(StudentEvent.received.desc()).limit(600))]
+            w=db.get(TestWindow,cfg.school_id)
+            return {'statuses':statuses,'events':records,'active':bool(w and w.starts<=now()<w.ends),'ends_at':w.ends if w else None,'student_authenticated':False}
+    @app.get('/',response_class=HTMLResponse)
+    def dashboard(_teacher=Depends(teacher)):return Path(__file__).with_name('student-dashboard.html').read_text(encoding='utf-8')
+    @app.get('/student-dashboard.js')
+    def script(_teacher=Depends(teacher)):return Response(Path(__file__).with_name('student-dashboard.js').read_text(encoding='utf-8'),media_type='text/javascript')
+    @app.get('/dashboard.css')
+    def style(_teacher=Depends(teacher)):return Response(Path(__file__).with_name('dashboard.css').read_text(encoding='utf-8'),media_type='text/css')
+    app.state.engine=engine
+    return app
+
+app=create_student_app()
+

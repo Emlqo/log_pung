@@ -1,0 +1,24 @@
+name: Pilot tests
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    env:
+      DISABLE_SQLALCHEMY_CEXT_RUNTIME: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: npm ci
+      - run: npm test
+      - run: npm run test:local
+      - run: npm run test:student
+      - run: pip install -r server/requirements.lock.txt
+      - run: python -m pytest tests -q
+        working-directory: server

@@ -1,0 +1,10 @@
+{
+  "manifest_version":3,"name":"학교 배포 진단 시험","version":"0.1.0","minimum_chrome_version":"120",
+  "description":"배포 시험 중이며 검색·방문기록은 수집하지 않음",
+  "permissions":["identity","identity.email","enterprise.deviceAttributes","storage","alarms"],
+  "host_permissions":["https://pilot.example.invalid/*"],
+  "background":{"service_worker":"worker.js","type":"module"},
+  "icons":{"16":"icon-16.png","48":"icon-48.png","128":"icon-128.png"},
+  "action":{"default_popup":"popup.html","default_title":"학교 배포 진단","default_icon":{"16":"icon-16.png","48":"icon-48.png"}},
+  "storage":{"managed_schema":"managed-schema.json"}
+}

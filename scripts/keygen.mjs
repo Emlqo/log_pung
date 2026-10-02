@@ -1,0 +1,12 @@
+import {generateKeyPairSync} from 'node:crypto';
+import {writeFile,mkdir} from 'node:fs/promises';
+import {resolve,dirname,relative,isAbsolute} from 'node:path';
+const requested=process.argv[2];
+if(!requested)throw Error('전달용 outputs 외부의 별도 안전한 PEM 경로를 지정하세요.');
+const target=resolve(requested),outputs=resolve(import.meta.dirname,'../..');
+const inside=relative(outputs,target);
+if(!inside.startsWith('..')&&!isAbsolute(inside))throw Error('키는 outputs/ 밖에 보관해야 합니다.');
+const {privateKey}=generateKeyPairSync('rsa',{modulusLength:3072,privateKeyEncoding:{type:'pkcs8',format:'pem'},publicKeyEncoding:{type:'spki',format:'pem'}});
+await mkdir(dirname(target),{recursive:true});
+await writeFile(target,privateKey,{flag:'wx',mode:0o600});
+console.log('별도 경로에 키 생성 완료. 키 내용은 출력하지 않습니다. Windows에서는 담당자 전용 ACL 및 암호화 백업을 설정하세요.');

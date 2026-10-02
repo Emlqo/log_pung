@@ -1,0 +1,16 @@
+node_modules/
+.venv/
+__pycache__/
+.pytest_cache/
+.env
+*.db
+dist/
+*.zip
+*.pem
+*.key
+*.crx
+release/
+local-test-dist/
+deploy/school-server/secrets/
+student-test-dist/
+.vercel/

@@ -1,0 +1,10 @@
+{
+ "type":"object","properties":{
+  "serverUrl":{"type":"string","title":"서버 HTTPS 원점"},
+  "schoolId":{"type":"string","title":"학교 식별값"},
+  "testEnabled":{"type":"boolean","title":"진단 시험 활성화"},
+  "intervalMinutes":{"type":"integer","minimum":5,"maximum":60,"title":"전송 간격 (기본 5분)"},
+  "devicePolicy":{"type":"string","enum":["allowlist","diagnostic"],"title":"allowlist: 지정 기기만 / diagnostic: 인증 후 미확인 기기도 진단 전송"},
+  "allowedDeviceIds":{"type":"array","items":{"type":"string"},"title":"Directory 기기 ID 목록"}
+ }
+}

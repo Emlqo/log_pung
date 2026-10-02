@@ -1,0 +1,10 @@
+{
+  "source":"교사가 제공한 관리자 화면 관찰. 독립 접속·등록·정책 검증 아님",
+  "observed":{"addByIdDialog":true,"extensionIdField":true,"webStoreSourceOption":true,"customUrlSourceOption":true,"saveButton":true,"studentDirectoryVisible":true,"chromeDeviceListCurrentlyEmpty":true},
+  "unverified":["팝업 저장/실등록 성공","시험 구성 그룹 선택·정책 편집 권한","강제 설치 정책 저장·전파","조직 비공개 게시 권한·심사","외부 확장 정책 허용","학교 ChromeOS 버전 120 이상","ChromeOS 등록 조직·관리자 조회 OU·사용자 affiliation","최초 학생 추가 조작 없는 OAuth","실제 재부팅·네트워크 복구"],
+  "recommendation":"조직 비공개 Chrome 웹 스토어 우선, 게시 권한 확인 후 시험 그룹만 적용",
+  "actualWebStoreExtensionId":null,
+  "actualSelfHostedExtensionId":null,
+  "actualUpdateManifestUrl":null,
+  "wholeSchoolDeploymentAuthorized":false
+}

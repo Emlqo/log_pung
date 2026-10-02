@@ -1,0 +1,8 @@
+{$PILOT_DOMAIN} {
+    request_body {
+        max_size 4KB
+    }
+    header Strict-Transport-Security "max-age=31536000"
+    reverse_proxy api:8000
+    # Access logging intentionally disabled: no account, URL or Authorization logs.
+}

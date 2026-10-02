@@ -1,0 +1,17 @@
+.git
+.venv
+node_modules
+**/__pycache__
+**/.pytest_cache
+**/.env
+**/secrets
+**/*.db
+**/*.pem
+**/*.key
+**/*.zip
+**/*.crx
+dist
+local-test-dist
+student-test-dist
+release
+deploy

@@ -1,0 +1,11 @@
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: pilot
+      POSTGRES_USER: pilot
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?별도 운영 DB 비밀번호 설정 필요}
+    ports: ["127.0.0.1:5432:5432"]
+    volumes: ["pilot-db:/var/lib/postgresql/data"]
+volumes:
+  pilot-db:

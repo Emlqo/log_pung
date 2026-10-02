@@ -1,0 +1,21 @@
+import {readFile,writeFile,mkdir,cp} from 'node:fs/promises';
+import {execFileSync} from 'node:child_process';
+import {createPublicKey} from 'node:crypto';
+import {zipSync} from 'fflate';
+import {icons} from './icons.mjs';
+const origin=process.env.PILOT_SERVER_ORIGIN||'https://pilot.example.invalid';
+const u=new URL(origin);if(u.protocol!=='https:'||u.origin!==origin||u.username||u.password)throw Error('서버 HTTPS 원점만 지정');
+execFileSync(process.execPath,['node_modules/typescript/bin/tsc','-p','student-test/tsconfig.json'],{stdio:'inherit'});
+await mkdir('student-test-dist',{recursive:true});await icons('student-test-dist');
+for(const file of ['popup.html'])await cp('student-test/'+file,'student-test-dist/'+file);
+await cp('extension/popup.css','student-test-dist/popup.css');
+const schema=JSON.parse(await readFile('extension/managed-schema.json','utf8'));
+schema.properties.devicePolicy.title='allowlist: 지정 기기 수집 시험 / diagnostic: 기기 상태만 전송 (이메일 인증 안 됨)';
+await writeFile('student-test-dist/managed-schema.json',JSON.stringify(schema,null,2));
+const m=JSON.parse(await readFile('student-test/manifest.json','utf8'));m.host_permissions=[origin+'/*'];
+if(process.env.EXTENSION_PUBLIC_KEY){const value=process.env.EXTENSION_PUBLIC_KEY;if(!/^[A-Za-z0-9+/]+={0,2}$/.test(value))throw Error('공개 SPKI DER base64만 허용');const key=createPublicKey({key:Buffer.from(value,'base64'),type:'spki',format:'der'});if(key.export({type:'spki',format:'der'}).toString('base64')!==value)throw Error('공개 키 불일치');m.key=value;}
+await writeFile('student-test-dist/manifest.json',JSON.stringify(m,null,2));
+const files=['manifest.json','managed-schema.json','popup.html','popup.css','icon-16.png','icon-48.png','icon-128.png','student-test/src/worker.js','student-test/src/popup.js','extension/src/core.js','local-test/src/core.js'];
+const archive={};for(const file of files)archive[file]=new Uint8Array(await readFile('student-test-dist/'+file));
+await writeFile('student-email-test-0.2.0.zip',zipSync(archive));
+console.log('학생 이메일 시험 빌드: student-test-dist / student-email-test-0.2.0.zip · OAuth 없음 · 관리 설정 전 안전 대기');

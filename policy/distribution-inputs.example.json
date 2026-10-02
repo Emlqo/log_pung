@@ -1,0 +1,5 @@
+{
+  "warning":"전부 예시 또는 미확정 값. 관리자 팝업에 그대로 입력하지 마세요.",
+  "webstore":{"extensionId":null,"source":"Chrome 웹 스토어에서 추가","updateUrl":null,"idSource":"Developer Dashboard의 실제 Item ID"},
+  "selfhost":{"extensionId":null,"source":"맞춤 URL에서 추가","exampleUpdateUrl":"https://distribution.school.example/extensions/pilot/updates.xml","exampleCrxUrl":"https://distribution.school.example/extensions/pilot/classroom-pilot-0.1.0.crx","idSource":"담당자가 보관하는 실제 서명 키의 공개 키에서 파생, selfhost 도구 결과"}
+}

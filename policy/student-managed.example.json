@@ -1,0 +1,8 @@
+{
+ "serverUrl":"https://your-project.example.invalid",
+ "schoolId":"school-pilot",
+ "testEnabled":false,
+ "intervalMinutes":5,
+ "devicePolicy":"diagnostic",
+ "allowedDeviceIds":[]
+}

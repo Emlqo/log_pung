@@ -1,0 +1,27 @@
+# 예시: DNS, 인증서, 파일 경로, URL 접두사를 승인된 실제 값으로 교체.
+# updates.xml 및 CRX만 공개. 교사 웹 화면/API와 별도 virtual host로 배치.
+server {
+    listen 443 ssl;
+    server_name distribution.school.example;
+    ssl_certificate /etc/ssl/REPLACE/fullchain.pem;
+    ssl_certificate_key /etc/ssl/REPLACE/privkey.pem;
+    access_log off;
+    add_header X-Content-Type-Options nosniff always;
+
+    location = /extensions/pilot/updates.xml {
+        alias /srv/classroom-pilot-release/updates.xml;
+        default_type application/xml;
+        add_header Cache-Control "no-cache" always;
+        add_header X-Content-Type-Options nosniff always;
+        auth_basic off;
+        limit_except GET { deny all; }
+    }
+    location ~ ^/extensions/pilot/(classroom-pilot-[0-9.]+\.crx)$ {
+        alias /srv/classroom-pilot-release/$1;
+        default_type application/x-chrome-extension;
+        add_header X-Content-Type-Options nosniff always;
+        auth_basic off;
+        limit_except GET { deny all; }
+    }
+    location / { return 404; }
+}

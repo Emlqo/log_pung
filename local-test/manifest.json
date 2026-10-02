@@ -1,0 +1,14 @@
+{
+  "manifest_version":3,
+  "name":"교사용 로컬 수집 시험",
+  "version":"0.1.0",
+  "minimum_chrome_version":"120",
+  "description":"선생님 본인 Chrome에서 직접 시작하는 10분 방문·검색 수집 및 로컬 시험 서버 전송. 학생 배포용 아님.",
+  "permissions":["storage","alarms"],
+  "optional_permissions":["webNavigation"],
+  "optional_host_permissions":["http://127.0.0.1:8765/*"],
+  "incognito":"not_allowed",
+  "background":{"service_worker":"worker.js","type":"module"},
+  "action":{"default_popup":"popup.html","default_title":"교사용 로컬 수집 시험"},
+  "icons":{"16":"icon-16.png","48":"icon-48.png","128":"icon-128.png"}
+}

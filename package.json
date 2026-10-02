@@ -1,0 +1,18 @@
+{
+ "name":"classroom-pilot","version":"0.1.0","private":true,"type":"module","engines":{"node":">=24"},
+ "scripts":{
+  "build":"node scripts/build.mjs",
+  "test":"npm run build && node --test extension/tests/*.test.ts scripts/tests/*.test.mjs",
+  "test:local":"node scripts/local-test-build.mjs && node --test local-test/tests/*.test.ts",
+  "build:local":"node scripts/local-test-build.mjs",
+  "build:student":"node scripts/student-test-build.mjs",
+  "test:student":"npm run build:student && node --test student-test/tests/*.test.ts",
+  "zip":"node scripts/zip.mjs",
+  "keygen":"node scripts/keygen.mjs",
+  "key:info":"node scripts/key-info.mjs",
+  "selfhost":"node scripts/selfhost.mjs",
+  "verify:crx":"node scripts/verify-crx.mjs",
+  "store:inputs":"node scripts/store-inputs.mjs"
+ },
+ "devDependencies":{"@types/chrome":"^0.1.0","typescript":"^5.9.0","fflate":"^0.8.2"}
+}
