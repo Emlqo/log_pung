@@ -1,3 +1,7 @@
+현재 학생 버전은 0.2.2입니다. 이메일·기기 ID 사전 등록 없이 정책 설치된 프로필을 대상으로 ON/OFF 수집합니다. 현재 설정과 절차는 STUDENT-SELFHOST.md를 따르세요. 아래 이전 시험 설명의 10분·기기 allowlist 절차는 선택적 과거 시험이며 현재 기본 절차가 아닙니다.
+
+2026-10-04 변경: 학생 시험 서버의 이메일 허용 목록을 제거했습니다. `TEST_ACCOUNT_EMAILS`는 이 학생 버전에서 사용하지 않습니다. 기존 환경변수가 남아 있어도 무시합니다. 대상 학생은 관리자 콘솔의 시험 조직/그룹에서 지정합니다. 서버는 조직 구성원을 인증하지 않으며 이메일·기기 ID는 여전히 클라이언트 주장입니다. 기기 허용 목록·교사 로그인은 유지하고 수집은 ON/OFF로 제어합니다.
+
 관리자 콘솔에 붙여넣는 정책은 `policy/student-selfhost-admin-console.json`처럼 각 값을 `{"Value": ...}`로 감싸야 합니다. 기존 평탄한 managed 예시는 storage.managed에서 읽는 값의 형태이며 콘솔 업로드 형식과 다릅니다. 자세한 설치 절차는 STUDENT-SELFHOST.md를 확인하세요.
 
 # GitHub → Vercel 시험 서버
@@ -14,7 +18,6 @@
 |---|---|
 | `DATABASE_URL` | 외부 PostgreSQL 실제 접속 URL |
 | `SCHOOL_ID` | `school-pilot` 등 동일한 학교 시험 식별값 |
-| `TEST_ACCOUNT_EMAILS` | 시험 `@goedu.kr` 계정 **2~3개**, 쉼표 구분 |
 | `TEACHER_PASSWORD_HASH` | `server/scripts/password.py`를 실행해 생성한 해시 |
 | `ALLOWED_DEVICE_IDS` | 실제 Directory 기기 ID, 초기 진단은 비워둘 수 있음 |
 | `STUDENT_TEST_ENABLED` | 설정 확인 후 `true` |
@@ -28,7 +31,7 @@ $env:PILOT_SERVER_ORIGIN='실제_HTTPS_원점으로_교체'
 npm.cmd run build:student
 ```
 
-`student-email-test-0.2.0.zip`이 게시용 파일입니다. 기본 빌드의 `pilot.example.invalid`은 **동작 주소가 아닌 안전 대기 예시값**입니다. Google Cloud OAuth client ID는 이 버전에 사용하지 않습니다.
+`student-email-test-0.2.1.zip`이 게시용 파일입니다. 기본 빌드의 `pilot.example.invalid`은 **동작 주소가 아닌 안전 대기 예시값**입니다. Google Cloud OAuth client ID는 이 버전에 사용하지 않습니다.
 
 ## 학생 Chromebook 첫 시험
 
@@ -38,8 +41,8 @@ Vercel/GitHub에 올리는 것은 **서버 배포**이며 확장 강제 설치�
 2. 새 확장 정책의 managed 설정에 `policy/student-managed.example.json`의 실제 HTTPS 원점과 학교 식별값을 넣고 `testEnabled=true`, `devicePolicy=diagnostic`으로 시작합니다. **진단에서는 검색을 수집하지 않고 이메일·기기 상태만 보냅니다.** 이메일은 인증되지 않습니다.
 3. 실제 ChromeOS `Directory 기기 ID`, 정책 설치 `admin`을 확인합니다. 기기 목록이 비어 있거나 ID를 읽지 못하면 교육청 등록 조직/조회 권한/affiliation을 확인합니다. 가짜 ID로 통과시키지 않습니다.
 4. 서버 `ALLOWED_DEVICE_IDS`와 managed `allowedDeviceIds`에 실제 승인 기기 ID를 넣고, managed `devicePolicy=allowlist`로 변경합니다. 환경변수 변경 후 Vercel Redeploy가 필요합니다.
-5. 교사 화면 **‘10분 수집 시험 시작’**. 학생 확장은 최대 5분 뒤 주기 확인하며, 아이콘의 상태 확인 버튼으로 즉시 상태를 확인할 수도 있습니다. 추가 Google 로그인·자동 팝업은 없습니다. 새 방문 URL과 지원 검색어만 수집합니다. 10분/계정별 200건으로 종료됩니다.
-6. 교사 화면에서 이메일·기록을 확인한 뒤 **시험 중지**. 중지 후 새 기록은 서버가 거부하고 확장도 다음 방문 전 서버 상태를 검사해 수집을 중단합니다. 전체 학교로 확대하지 않습니다.
+5. 교사 화면 **‘ON · 수집 시작’**. 학생 확장은 최대 5분 뒤 주기 확인하며, 아이콘의 상태 확인 버튼으로 즉시 상태를 확인할 수도 있습니다. 추가 Google 로그인·자동 팝업은 없습니다. 새 방문 URL과 지원 검색어만 수집합니다. OFF를 누를 때까지 계속 수집합니다. 10분·200건 자동 종료 제한은 없습니다.
+6. 교사 화면에서 이메일·기록을 확인한 뒤 **OFF · 수집 중지**. 중지 후 새 기록은 서버가 거부하고 확장도 다음 방문 전 서버 상태를 검사해 수집을 중단합니다. 전체 학교로 확대하지 않습니다.
 
 최근 1일 데이터만 조회하고 서버 시작/새 수신에서 만료 기록을 정리합니다. 전역 자동 정리 스케줄은 이 시험에 추가하지 않았습니다. 신뢰할 수 있는 학생 신원 인증이 필요한 운영 단계에는 별도 인증을 다시 적용해야 합니다.
 

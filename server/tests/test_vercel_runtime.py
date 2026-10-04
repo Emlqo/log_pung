@@ -24,7 +24,7 @@ def test_entrypoint_executes_app_and_does_not_serve_source(monkeypatch):
 
 def test_cold_request_initializes_database_without_startup(tmp_path):
     cfg=StudentSettings(database_url='sqlite:///'+str(tmp_path/'cold.db'),
-        accounts=('a@goedu.kr','b@goedu.kr'),teacher_hash=password_hash(AUTH[1]),enabled=True)
+        teacher_hash=password_hash(AUTH[1]),enabled=True)
     # No context manager: TestClient sends no lifespan startup event.
     client=TestClient(create_student_app(cfg))
     assert client.get('/api/student/window').json()['active'] is False
@@ -32,7 +32,7 @@ def test_cold_request_initializes_database_without_startup(tmp_path):
 
 def test_cold_database_failure_is_safe_and_retryable(tmp_path):
     cfg=StudentSettings(database_url='sqlite:///'+str(tmp_path/'missing'/'cold.db'),
-        accounts=('a@goedu.kr','b@goedu.kr'),enabled=True)
+        enabled=True)
     client=TestClient(create_student_app(cfg))
     response=client.get('/api/student/window')
     assert response.status_code==503 and str(tmp_path) not in response.text

@@ -1,6 +1,6 @@
 {
- "manifest_version":3,"minimum_chrome_version":"120","name":"학교 이메일 수집 시험","version":"0.2.0",
- "description":"교사가 켠 10분 시험 동안 지정 학교 기기의 방문·검색 기록을 전송합니다. 학생 이메일은 인증되지 않습니다.",
+ "manifest_version":3,"minimum_chrome_version":"120","name":"학교 이메일 수집 시험","version":"0.2.2",
+ "description":"교사가 수집 ON으로 켠 동안 정책으로 설치된 기기의 방문·검색 기록을 전송합니다. 학생 이메일은 인증되지 않습니다.",
  "permissions":["identity","identity.email","enterprise.deviceAttributes","storage","alarms","webNavigation"],
  "host_permissions":["https://pilot.example.invalid/*"],"incognito":"not_allowed",
  "background":{"service_worker":"student-test/src/worker.js","type":"module"},

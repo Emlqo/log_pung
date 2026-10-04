@@ -31,7 +31,7 @@ LABEL = '인증되지 않은 계정 정보'
 class StudentSettings:
     database_url: str = field(default_factory=lambda: os.getenv('DATABASE_URL',''))
     school_id: str = field(default_factory=lambda: os.getenv('SCHOOL_ID','school-pilot'))
-    accounts: tuple = field(default_factory=lambda: tuple(x.strip().lower() for x in os.getenv('TEST_ACCOUNT_EMAILS','').split(',') if x.strip()))
+    device_policy: str = field(default_factory=lambda: os.getenv('DEVICE_POLICY','policy'))
     device_ids: tuple = field(default_factory=lambda: tuple(x.strip() for x in os.getenv('ALLOWED_DEVICE_IDS','').split(',') if x.strip()))
     teacher_hash: str = field(default_factory=lambda: os.getenv('TEACHER_PASSWORD_HASH',''))
     enabled: bool = field(default_factory=lambda: os.getenv('STUDENT_TEST_ENABLED','false')=='true')
@@ -72,6 +72,7 @@ class EventReport(EmailReport):
     events: list[Event] = Field(min_length=1,max_length=20)
 
 def now(): return int(time.time()*1000)
+def window_active(w):return bool(w and w.starts is not None and w.ends is not None and w.starts<=now() and (w.ends==0 or now()<w.ends))
 
 def create_student_app(cfg=None):
     cfg=cfg or StudentSettings()
@@ -109,14 +110,15 @@ def create_student_app(cfg=None):
             raise HTTPException(401,'교사 로그인 필요',headers={'WWW-Authenticate':'Basic realm="School pilot"'})
         return 'teacher'
     def ready():
-        if not engine or not cfg.enabled or not re.fullmatch(r'[A-Za-z0-9_-]{1,64}',cfg.school_id) or len(cfg.accounts) not in (2,3) or len(set(cfg.accounts))!=len(cfg.accounts) or any(not re.fullmatch(r'[^@\s]+@goedu\.kr',x) for x in cfg.accounts):
-            raise HTTPException(503,'서버 설정·시험 계정 2~3명·시험 활성화 필요')
+        if not engine or not cfg.enabled or not re.fullmatch(r'[A-Za-z0-9_-]{1,64}',cfg.school_id) or cfg.device_policy not in ('policy','allowlist'):
+            raise HTTPException(503,'서버 DB·학교 식별값·시험 활성화 설정 필요')
         try:initialize_database()
         except SQLAlchemyError:raise HTTPException(503,'데이터베이스 연결·초기화 확인 필요') from None
     def target(report):
         ready()
-        if report.school_id!=cfg.school_id or report.email not in cfg.accounts:raise HTTPException(403,'시험 대상 아님')
+        if report.school_id!=cfg.school_id:raise HTTPException(403,'시험 학교 아님')
     def device(report):
+        if cfg.device_policy=='policy':return report.install_type=='admin'
         return bool(report.device_id and report.device_id in cfg.device_ids and report.install_type=='admin' and report.platform=='cros')
     @app.middleware('http')
     async def limits(request:Request,call_next):
@@ -132,7 +134,7 @@ def create_student_app(cfg=None):
         response.headers['Content-Security-Policy']="default-src 'self'; script-src 'self'; style-src 'self'; frame-ancestors 'none'; base-uri 'none'"
         return response
     @app.get('/health')
-    def health():return {'status':'running','mode':'unverified-email-pilot','student_authenticated':False,'configured':bool(engine and cfg.enabled and len(cfg.accounts) in (2,3))}
+    def health():return {'status':'running','mode':'unverified-email-pilot','student_authenticated':False,'configured':bool(engine and cfg.enabled and re.fullmatch(r'[A-Za-z0-9_-]{1,64}',cfg.school_id))}
     @app.get('/distribution/{filename}')
     def distribution(filename:str):
         # Public signed packages only. Never expose directories, keys or teacher data.
@@ -146,12 +148,12 @@ def create_student_app(cfg=None):
         ready()
         with Session(engine) as db:
             w=db.get(TestWindow,cfg.school_id)
-            if not w or not w.starts<=now()<w.ends:return {'active':False,'student_authenticated':False}
-            return {'active':True,'window_id':w.window_id,'starts_at':w.starts,'ends_at':w.ends,'student_authenticated':False}
+            if not window_active(w):return {'active':False,'student_authenticated':False}
+            return {'active':True,'window_id':w.window_id,'starts_at':w.starts,'ends_at':w.ends or None,'mode':'on-off' if w.ends==0 else 'timed','student_authenticated':False}
     @app.post('/api/student/status')
     def status(report:EmailReport):
         target(report)
-        data=report.model_dump();data['device_state']='confirmed' if device(report) else 'needs_check';data['auth_state']=LABEL
+        data=report.model_dump();data['device_state']='confirmed' if device(report) else 'needs_check';data['auth_state']=LABEL;data['device_policy']=cfg.device_policy
         with Session(engine) as db:
             row=db.get(StudentStatus,report.email) or StudentStatus(email=report.email)
             row.received=now();row.data=json.dumps(data);db.add(row);db.commit()
@@ -161,10 +163,10 @@ def create_student_app(cfg=None):
         target(report)
         if not device(report):raise HTTPException(403,'정책 설치·ChromeOS·학교 기기 대상 확인 필요')
         with Session(engine) as db:
-            # Lock a durable window before checking quota, including across Vercel instances.
+            # Lock the durable control state against concurrent OFF and uploads.
             w=db.scalar(select(TestWindow).where(TestWindow.school==cfg.school_id).with_for_update())
-            if not w or not w.starts<=now()<w.ends or w.window_id!=report.window_id:raise HTTPException(403,'수집 시험 시간 아님')
-            if any(e.at<w.starts or e.at>=w.ends or e.at>now()+5000 for e in report.events):raise HTTPException(422,'시험 시간 밖 이벤트')
+            if not window_active(w) or w.window_id!=report.window_id:raise HTTPException(403,'수집 시험 시간 아님')
+            if any(e.at<w.starts or (w.ends!=0 and e.at>=w.ends) or e.at>now()+5000 for e in report.events):raise HTTPException(422,'시험 시간 밖 이벤트')
             budget_key=hashlib.sha256((report.email+w.window_id).encode()).hexdigest()
             budget=db.get(WindowBudget,budget_key) or WindowBudget(key=budget_key,count=0)
             accepted=[]
@@ -174,7 +176,6 @@ def create_student_app(cfg=None):
                 if row:
                     if row.data!=data:raise HTTPException(409,'같은 이벤트 ID의 내용 변경 거부')
                 else:
-                    if budget.count>=200:raise HTTPException(429,'계정별 시험 200건 제한')
                     db.add(StudentEvent(key=key,email=report.email,window_id=w.window_id,received=now(),data=data));budget.count+=1;db.flush()
                 accepted.append(event.id)
             db.add(budget)
@@ -183,13 +184,13 @@ def create_student_app(cfg=None):
     @app.post('/api/teacher/window/start')
     def start(_teacher=Depends(teacher)):
         ready()
-        if not cfg.device_ids:raise HTTPException(409,'실제 학교 기기 ID 목록부터 설정하세요.')
+        if cfg.device_policy=='allowlist' and not cfg.device_ids:raise HTTPException(409,'실제 학교 기기 ID 목록부터 설정하세요.')
         with Session(engine) as db:
             w=db.get(TestWindow,cfg.school_id) or TestWindow(school=cfg.school_id)
-            if w.ends and w.starts<=now()<w.ends:raise HTTPException(409,'이미 진행 중인 시험')
-            w.window_id=str(uuid4());w.starts=now();w.ends=w.starts+600000
+            if window_active(w) and w.ends==0:return {'window_id':w.window_id,'starts_at':w.starts,'ends_at':w.ends or None}
+            w.window_id=str(uuid4());w.starts=now();w.ends=0
             db.add(w);db.commit()
-            return {'window_id':w.window_id,'starts_at':w.starts,'ends_at':w.ends}
+            return {'window_id':w.window_id,'starts_at':w.starts,'ends_at':None}
     @app.post('/api/teacher/window/stop')
     def stop(_teacher=Depends(teacher)):
         ready()
@@ -204,7 +205,7 @@ def create_student_app(cfg=None):
             statuses=[{'email':s.email,'received_at':s.received,'delayed':now()-s.received>900000,**json.loads(s.data)} for s in db.scalars(select(StudentStatus).where(StudentStatus.received>=now()-86400000).order_by(StudentStatus.received.desc()))]
             records=[{'email':e.email,'received_at':e.received,**json.loads(e.data),'auth_state':LABEL} for e in db.scalars(select(StudentEvent).where(StudentEvent.received>=now()-86400000).order_by(StudentEvent.received.desc()).limit(600))]
             w=db.get(TestWindow,cfg.school_id)
-            return {'statuses':statuses,'events':records,'active':bool(w and w.starts<=now()<w.ends),'ends_at':w.ends if w else None,'student_authenticated':False}
+            return {'statuses':statuses,'events':records,'active':window_active(w),'ends_at':(w.ends or None) if w else None,'student_authenticated':False}
     @app.get('/',response_class=HTMLResponse)
     def dashboard(_teacher=Depends(teacher)):return Path(__file__).with_name('student-dashboard.html').read_text(encoding='utf-8')
     @app.get('/student-dashboard.js')

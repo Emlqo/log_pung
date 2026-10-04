@@ -6,7 +6,7 @@ export const ASSETS=['manifest.json','worker.js','core.js','popup.js','popup.htm
 export const STUDENT_ASSETS=['manifest.json','managed-schema.json','popup.html','popup.css','icon-16.png','icon-48.png','icon-128.png','student-test/src/worker.js','student-test/src/popup.js','extension/src/core.js','local-test/src/core.js'];
 export function assertStudentPilot(manifest){
  const expected=['alarms','enterprise.deviceAttributes','identity','identity.email','storage','webNavigation'];
- if(manifest.manifest_version!==3||JSON.stringify([...manifest.permissions].sort())!==JSON.stringify(expected)||manifest.content_scripts||manifest.optional_permissions?.length||manifest.optional_host_permissions?.length||manifest.oauth2||manifest.incognito!=='not_allowed')throw Error('학생용 10분 시험 manifest 불일치');
+ if(manifest.manifest_version!==3||JSON.stringify([...manifest.permissions].sort())!==JSON.stringify(expected)||manifest.content_scripts||manifest.optional_permissions?.length||manifest.optional_host_permissions?.length||manifest.oauth2||manifest.incognito!=='not_allowed')throw Error('학생용 수집 manifest 불일치');
  if(manifest.host_permissions?.length!==1||!/^https:\/\/[^/]+\/\*$/.test(manifest.host_permissions[0]))throw Error('학생 시험 서버는 단일 HTTPS 원점 필요');
  if(manifest.background?.service_worker!=='student-test/src/worker.js'||manifest.background.type!=='module'||!/^\d+(\.\d+){1,3}$/.test(manifest.version))throw Error('학생 시험 worker·버전 오류');
 }
