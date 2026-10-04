@@ -101,6 +101,10 @@ def test_teacher_dashboard_exposes_on_off_controls(client):
     page=client.get('/',auth=AUTH).text
     assert 'ON · 수집 시작' in page and 'OFF · 수집 중지' in page
     assert '10분 수집 시험 시작' not in page
+    for control in ['email','range','site','kind','sort','query','reset']:
+        assert 'id="'+control+'"' in page
+    assert client.get('/student-dashboard-filters.js').status_code==401
+    assert client.get('/student-dashboard-filters.js',auth=AUTH).status_code==200
 
 def test_policy_mode_allows_admin_devices_without_ids_but_rejects_manual_install(config):
     config.device_policy='policy';config.device_ids=()

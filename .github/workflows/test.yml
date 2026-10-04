@@ -19,6 +19,7 @@ jobs:
       - run: npm test
       - run: npm run test:local
       - run: npm run test:student
+      - run: npm run test:dashboard
       - run: pip install -r server/requirements.lock.txt
       - run: python -m pytest tests -q
         working-directory: server

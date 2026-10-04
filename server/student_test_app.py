@@ -210,6 +210,8 @@ def create_student_app(cfg=None):
     def dashboard(_teacher=Depends(teacher)):return Path(__file__).with_name('student-dashboard.html').read_text(encoding='utf-8')
     @app.get('/student-dashboard.js')
     def script(_teacher=Depends(teacher)):return Response(Path(__file__).with_name('student-dashboard.js').read_text(encoding='utf-8'),media_type='text/javascript')
+    @app.get('/student-dashboard-filters.js')
+    def filter_script(_teacher=Depends(teacher)):return Response(Path(__file__).with_name('student-dashboard-filters.js').read_text(encoding='utf-8'),media_type='text/javascript')
     @app.get('/dashboard.css')
     def style(_teacher=Depends(teacher)):return Response(Path(__file__).with_name('dashboard.css').read_text(encoding='utf-8'),media_type='text/css')
     app.state.engine=engine

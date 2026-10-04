@@ -3,6 +3,7 @@
  "scripts":{
   "build":"node scripts/build.mjs",
   "test":"npm run build && node --test extension/tests/*.test.ts scripts/tests/*.test.mjs",
+  "test:dashboard":"node --test server/tests/dashboard-filters.test.mjs",
   "test:local":"node scripts/local-test-build.mjs && node --test local-test/tests/*.test.ts",
   "build:local":"node scripts/local-test-build.mjs",
   "build:student":"node scripts/student-test-build.mjs",
