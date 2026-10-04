@@ -1,4 +1,4 @@
-# 현재 학생 배포: 0.2.2 ON/OFF
+# 현재 학생 배포: 0.2.3 ON/OFF
 
 2026-10-04 교사 요청으로 학생 이메일 사전 등록, 기기 ID별 등록, 10분/200건 종료 제한을 제거했습니다. 대상은 관리자 콘솔의 시험 조직/그룹에 배포된 계정 프로필입니다. 개인 기기에 해당 정책으로 설치된 프로필도 포함됩니다. 서버는 Google 신원이나 정책 설치 주장 자체를 인증하지 않으며, 이메일·기기 조건은 클라이언트 주장으로 표시합니다.
 
@@ -8,7 +8,7 @@
 
 확장 정책 JSON을 `policy/student-selfhost-admin-console.json`으로 교체합니다. 이 파일은 Value 래퍼를 포함합니다. `devicePolicy`는 **policy**, `testEnabled`는 true입니다. 이 설정은 수집 가능한 배포 프로필을 선택하는 것이며 교사가 ON을 누르기 전에는 기록을 수집하지 않습니다. diagnostic 모드는 여전히 기록을 수집하지 않습니다. allowlist 모드는 선택적으로 유지됩니다.
 
-학생 기기에서 chrome://policy → 정책 새로고침 후 확장 팝업 **버전 0.2.2**를 확인합니다. 자동 업데이트 반영 시간은 실제 기기에서 확인해야 합니다. 0.2.0은 새 ON/OFF 상태를 처리하지 못하므로 버전 확인이 필요합니다. 확장을 수동 설치하도록 안내하지 않습니다.
+학생 기기에서 chrome://policy → 정책 새로고침 후 확장 팝업 **버전 0.2.3**를 확인합니다. 자동 업데이트 반영 시간은 실제 기기에서 확인해야 합니다. 0.2.0은 새 ON/OFF 상태를 처리하지 못하므로 버전 확인이 필요합니다. 확장을 수동 설치하도록 안내하지 않습니다.
 
 Vercel Production 환경변수:
 
@@ -40,6 +40,6 @@ CRX3 서명 키는 이 PC의 C:/Users/User/.codex/private-keys/classroom-pilot-s
 
 버전 변경 → PILOT_SERVER_ORIGIN=https://log-pung.vercel.app로 build:student → selfhost:student에 기존 key 경로와 --base-url https://log-pung.vercel.app/distribution 지정 → verify-crx 파일경로 --student. 동일 버전 CRX 덮어쓰기는 거부됩니다. server/distribution에 있는 공개 CRX와 XML만 서버에서 제공하며 비밀 파일은 제공하지 않습니다.
 
-실제 학교에서 0.2.0 정책 설치 admin·학교 이메일·Directory 기기 ID 읽기가 교사에게 확인됐습니다. 0.2.2 자동 업데이트와 실제 ON/OFF 수집, 재부팅·절전·장시간 연결 복구는 추가 현장 검증이 필요합니다.
+실제 학교에서 0.2.0 정책 설치 admin·학교 이메일·Directory 기기 ID 읽기가 교사에게 확인됐습니다. 0.2.3 자동 업데이트와 실제 ON/OFF 수집, 재부팅·절전·장시간 연결 복구는 추가 현장 검증이 필요합니다.
 
 [관리자 콘솔 정책 Value 형식](https://www.chromium.org/administrators/configuring-policy-for-extensions/), [맞춤 URL로 확장 추가](https://support.google.com/chrome/a/answer/6177447?hl=ko)

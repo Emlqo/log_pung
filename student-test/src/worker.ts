@@ -15,7 +15,8 @@ async function save(s:State){
  await chrome.storage.session.set({[KEY]:s});
  await chrome.action.setBadgeText({text:collecting?'ON':''});
  await chrome.action.setBadgeBackgroundColor({color:'#bb6600'});
- await chrome.action.setTitle({title:collecting?'방문·검색 수집 ON · 이메일은 인증되지 않음':'학교 이메일 수집 · OFF 또는 대기'});
+ const name=chrome.runtime.getManifest().name||'풍양중학교 수업 활동 기록 및 보안프로그램';
+ await chrome.action.setTitle({title:name+' · '+(collecting?'수집 ON':'수집 OFF 또는 대기')});
  return s;
 }
 async function settings():Promise<Config>{const raw=await chrome.storage.managed.get(null);const policy=raw.devicePolicy==='policy';const c=config(policy?{...raw,devicePolicy:'diagnostic'}:raw,chrome.runtime.getManifest().host_permissions||[]);return {...c,devicePolicy:policy?'policy':c.devicePolicy};}
