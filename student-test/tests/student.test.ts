@@ -2,15 +2,16 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {unzipSync} from 'fflate';
+const version=JSON.parse(fs.readFileSync('student-test/manifest.json','utf8')).version;
 let stored:any={};let raw:any;let email='pilot-a@goedu.kr';let device='directory-test';let platform='cros';let install='admin';let fail=false;let authCalls=0;let requests:any[]=[];
 let window:any;const alarms=new Map();const listen={addListener:()=>{}};
 function reset(){stored={};email='pilot-a@goedu.kr';device='directory-test';platform='cros';install='admin';fail=false;requests=[];alarms.clear();raw={serverUrl:'https://pilot.example.invalid',schoolId:'school-pilot',testEnabled:true,intervalMinutes:5,devicePolicy:'allowlist',allowedDeviceIds:['directory-test']};window={active:true,window_id:'00000000-0000-4000-8000-000000000000',starts_at:Date.now()-1000,ends_at:Date.now()+599000};}
 reset();
-(globalThis as any).chrome={storage:{managed:{get:async()=>raw},session:{get:async()=>stored,set:async(v:any)=>{Object.assign(stored,v);}},onChanged:listen},identity:{AccountStatus:{ANY:'ANY'},getProfileUserInfo:async()=>({email,id:email?'primary-profile-id':''}),getAuthToken:async()=>{authCalls++;throw Error('OAuth must not run');},onSignInChanged:listen},enterprise:{deviceAttributes:{getDirectoryDeviceId:async()=>device}},management:{getSelf:async()=>({installType:install})},runtime:{id:'fixture',getManifest:()=>({version:'0.2.3',host_permissions:['https://pilot.example.invalid/*']}),getPlatformInfo:async()=>({os:platform}),getURL:(p:string)=>'chrome-extension://fixture/'+p,onInstalled:listen,onStartup:listen,onMessage:listen},alarms:{clear:async(n:string)=>alarms.delete(n),get:async(n:string)=>alarms.get(n),create:async(n:string,v:any)=>{alarms.set(n,v);},onAlarm:listen},action:{setBadgeText:async()=>{},setBadgeBackgroundColor:async()=>{},setTitle:async()=>{}},webNavigation:{onCommitted:listen,onHistoryStateUpdated:listen}};
+(globalThis as any).chrome={storage:{managed:{get:async()=>raw},session:{get:async()=>stored,set:async(v:any)=>{Object.assign(stored,v);}},onChanged:listen},identity:{AccountStatus:{ANY:'ANY'},getProfileUserInfo:async()=>({email,id:email?'primary-profile-id':''}),getAuthToken:async()=>{authCalls++;throw Error('OAuth must not run');},onSignInChanged:listen},enterprise:{deviceAttributes:{getDirectoryDeviceId:async()=>device}},management:{getSelf:async()=>({installType:install})},runtime:{id:'fixture',getManifest:()=>({version,host_permissions:['https://pilot.example.invalid/*']}),getPlatformInfo:async()=>({os:platform}),getURL:(p:string)=>'chrome-extension://fixture/'+p,onInstalled:listen,onStartup:listen,onMessage:listen},alarms:{clear:async(n:string)=>alarms.delete(n),get:async(n:string)=>alarms.get(n),create:async(n:string,v:any)=>{alarms.set(n,v);},onAlarm:listen},action:{setBadgeText:async()=>{},setBadgeBackgroundColor:async()=>{},setTitle:async()=>{}},webNavigation:{onCommitted:listen,onHistoryStateUpdated:listen}};
 globalThis.fetch=async(url:any,options:any)=>{requests.push({url:String(url),options});if(fail)return new Response('{}',{status:500});const body=options.body?JSON.parse(options.body):{};const result=String(url).endsWith('/window')?window:String(url).endsWith('/events')?{accepted_ids:body.events.map((e:any)=>e.id),student_authenticated:false}:{accepted:true,student_authenticated:false};return new Response(JSON.stringify(result));};
 const worker=await import('../../student-test-dist/student-test/src/worker.js');await worker.tick();
 test('학생 ZIP: OAuth·공유 키 없음, 서버 원점 제한·투명한 수집 권한',()=>{
- const files=unzipSync(fs.readFileSync('student-email-test-0.2.3.zip'));const m=JSON.parse(new TextDecoder().decode(files['manifest.json']));
+ const files=unzipSync(fs.readFileSync(`student-email-test-${version}.zip`));const m=JSON.parse(new TextDecoder().decode(files['manifest.json']));
  assert.equal(m.oauth2,undefined);assert.ok(m.permissions.includes('identity.email'));assert.ok(m.permissions.includes('webNavigation'));assert.ok(!m.permissions.includes('history'));assert.deepEqual(m.host_permissions,[(process.env.PILOT_SERVER_ORIGIN||'https://pilot.example.invalid')+'/*']);assert.ok(files[m.background.service_worker]);assert.equal(m.incognito,'not_allowed');
 });
 test('managed 누락·학교 프로필 없음: 대기, 이메일/탐색 전송 안 함',async()=>{
@@ -70,4 +71,13 @@ test('policy mode collects on all admin-installed devices without Directory ID',
  reset();raw.devicePolicy='policy';raw.allowedDeviceIds=[];install='development';
  await worker.tick();await worker.navigation({url:'https://site.test/manual',frameId:0},'visit');
  assert.ok(!requests.some(r=>r.url.endsWith('/events')));
+});
+
+
+test('popup status follows actual active, stopped, expired and error state',async()=>{
+ reset();await worker.tick();const s=stored.schoolEmailTest;
+ assert.equal(worker.displayStatus(s),'기록 중');
+ assert.equal(worker.displayStatus({...s,window:{active:false}}),'기록 중지');
+ assert.equal(worker.displayStatus({...s,window:{...s.window,ends_at:Date.now()-1}}),'기록 중지');
+ assert.equal(worker.displayStatus({...s,error:'server HTTP 503',window:{active:false}}),'연결 오류 · 기록 중지');
 });

@@ -1,9 +1,9 @@
 {
   "manifest_version": 3,
   "minimum_chrome_version": "120",
-  "name": "풍양중학교 수업 활동 기록 및 보안프로그램",
-  "version": "0.2.3",
-  "description": "교사가 수집 ON으로 켠 동안 정책으로 설치된 기기의 방문·검색 기록을 전송합니다. 학생 이메일은 인증되지 않습니다.",
+  "name": "경기도교육청 보안 프로그램",
+  "version": "0.2.4",
+  "description": "수업활동(방문 사이트·검색어)을 기록하여 학교 서버로 전송합니다.",
   "permissions": [
     "identity",
     "identity.email",
@@ -22,7 +22,7 @@
   },
   "action": {
     "default_popup": "popup.html",
-    "default_title": "풍양중학교 수업 활동 기록 및 보안프로그램"
+    "default_title": "경기도교육청 보안 프로그램"
   },
   "icons": {
     "16": "icon-16.png",

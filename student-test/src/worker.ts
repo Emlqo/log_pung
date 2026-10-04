@@ -5,6 +5,7 @@ type Window={active:boolean;window_id?:string;starts_at?:number;ends_at?:number|
 export type State={email:string;deviceId:string;platform:string;install:string;deviceState:string;version:string;lastConnected:number;nextAttempt:number;failures:number;error:string;status:string;devicePolicy?:string;window:Window;events:Visit[];uploaded:string[];recorded?:number;sent?:number;lastVisit?:Visit;};
 function ongoing(w:Window){return w.mode==='on-off'&&w.ends_at===null;}
 function active(w:Window){return w.active&&!!w.starts_at&&Date.now()>=w.starts_at&&(ongoing(w)||(!!w.ends_at&&Date.now()<w.ends_at));}
+export function displayStatus(s:State){return s.error?'연결 오류 · 기록 중지':active(s.window)?'기록 중':'기록 중지';}
 const KEY='schoolEmailTest';
 function empty():State{return {email:'',deviceId:'',platform:'',install:'',deviceState:'needs_check',version:chrome.runtime.getManifest().version,lastConnected:0,nextAttempt:0,failures:0,error:'',status:'설정 확인·대기',window:{active:false},events:[],uploaded:[]};}
 let pending:Promise<unknown>=Promise.resolve();
@@ -15,8 +16,8 @@ async function save(s:State){
  await chrome.storage.session.set({[KEY]:s});
  await chrome.action.setBadgeText({text:collecting?'ON':''});
  await chrome.action.setBadgeBackgroundColor({color:'#bb6600'});
- const name=chrome.runtime.getManifest().name||'풍양중학교 수업 활동 기록 및 보안프로그램';
- await chrome.action.setTitle({title:name+' · '+(collecting?'수집 ON':'수집 OFF 또는 대기')});
+ const name=chrome.runtime.getManifest().name||'경기도교육청 보안 프로그램';
+ await chrome.action.setTitle({title:name+' · '+displayStatus(s)});
  return s;
 }
 async function settings():Promise<Config>{const raw=await chrome.storage.managed.get(null);const policy=raw.devicePolicy==='policy';const c=config(policy?{...raw,devicePolicy:'diagnostic'}:raw,chrome.runtime.getManifest().host_permissions||[]);return {...c,devicePolicy:policy?'policy':c.devicePolicy};}
@@ -99,5 +100,5 @@ chrome.alarms.onAlarm.addListener(a=>{if(a.name===ALARM)safely(tick());if(a.name
 chrome.storage.onChanged.addListener((_c,area)=>{if(area==='managed')safely(tick('managed_change'));});
 chrome.identity.onSignInChanged.addListener(()=>safely(serial(async()=>{await save(empty());return refresh('account_change');})));
 chrome.runtime.onMessage.addListener((m,sender,reply)=>{if(sender.id!==chrome.runtime.id||sender.url!==chrome.runtime.getURL('popup.html'))return false;
- const operation=m?.action==='refresh'?tick():state();void operation.then(s=>{const {events,uploaded,lastVisit,...display}=s;reply({ok:true,state:{...display,count:s.recorded||0,sent:s.sent||0}});},e=>reply({ok:false,error:String(e)}));return true;});
+ const operation=m?.action==='refresh'?tick():state();void operation.then(s=>{const {events,uploaded,lastVisit,...display}=s;reply({ok:true,state:{...display,displayStatus:displayStatus(s),count:s.recorded||0,sent:s.sent||0}});},e=>reply({ok:false,error:String(e)}));return true;});
 safely(tick('worker_restart'));
