@@ -8,7 +8,7 @@ for directory in ['extension','scripts','policy','docs','dist','server','deploy'
     for item in (root/directory).rglob('*'):
         if not item.is_file(): continue
         if any(part in {'__pycache__','.pytest_cache','secrets'} for part in item.parts): continue
-        if item.name=='.env' or item.suffix in {'.db','.pyc','.pem','.key'}: continue
+        if item.name=='.env' or item.suffix in {'.csv','.db','.pyc','.pem','.key'}: continue
         if item.suffix=='.crx' and item.parent!=root/'server'/'distribution': continue
         files.append(item)
 with zipfile.ZipFile(destination,'w',zipfile.ZIP_DEFLATED) as archive:

@@ -21,9 +21,11 @@ from sqlalchemy.pool import NullPool
 try:
     from .app import Report, password_matches
     from .local_test_app import Event
+    from .student_directory import parse_directory, MAX_DIRECTORY_BYTES
 except ImportError:
     from app import Report, password_matches
     from local_test_app import Event
+    from student_directory import parse_directory, MAX_DIRECTORY_BYTES
 
 LABEL = '인증되지 않은 계정 정보'
 
@@ -37,6 +39,12 @@ class StudentSettings:
     enabled: bool = field(default_factory=lambda: os.getenv('STUDENT_TEST_ENABLED','false')=='true')
 
 class StudentBase(DeclarativeBase): pass
+class StudentDirectory(StudentBase):
+    __tablename__='student_directory'
+    school=Column(String(64),primary_key=True)
+    email=Column(String(254),primary_key=True)
+    display_name=Column(String(200),nullable=False)
+
 class StudentStatus(StudentBase):
     __tablename__='student_email_test_status'
     email=Column(String(254),primary_key=True)
@@ -123,7 +131,13 @@ def create_student_app(cfg=None):
     @app.middleware('http')
     async def limits(request:Request,call_next):
         if request.url.path.startswith('/api/'):
-            if len(await request.body())>65536:return JSONResponse({'detail':'본문 크기 제한'},status_code=413)
+            maximum=MAX_DIRECTORY_BYTES if request.url.path=='/api/teacher/directory' else 65536
+            chunks=[];size=0
+            async for chunk in request.stream():
+                size+=len(chunk)
+                if size>maximum:return JSONResponse({'detail':'본문 크기 제한'},status_code=413)
+                chunks.append(chunk)
+            request._body=b''.join(chunks)
         if request.method=='POST' and request.url.path.startswith('/api/teacher/'):
             origin=request.headers.get('origin')
             if origin and origin!=str(request.base_url).rstrip('/'):
@@ -198,12 +212,36 @@ def create_student_app(cfg=None):
             w=db.get(TestWindow,cfg.school_id)
             if w:w.ends=now();db.commit()
         return {'stopped':True}
+    @app.post('/api/teacher/directory')
+    async def directory(request:Request,_teacher=Depends(teacher)):
+        ready()
+        try:names=parse_directory(await request.body())
+        except ValueError as error:raise HTTPException(422,str(error)) from None
+        if engine.dialect.name=='postgresql':
+            from sqlalchemy.dialects.postgresql import insert
+        else:
+            from sqlalchemy.dialects.sqlite import insert
+        rows=[{'school':cfg.school_id,'email':email,'display_name':name} for email,name in names.items()]
+        try:
+            with Session(engine) as db:
+                for offset in range(0,len(rows),200):
+                    statement=insert(StudentDirectory).values(rows[offset:offset+200])
+                    db.execute(statement.on_conflict_do_update(index_elements=['school','email'],set_={'display_name':statement.excluded.display_name}))
+                db.commit()
+        except SQLAlchemyError:raise HTTPException(503,'명단 저장 실패 · 잠시 후 다시 시도해주세요.') from None
+        return {'matched_directory_entries':len(names)}
     @app.get('/api/teacher/view')
     def view(_teacher=Depends(teacher)):
         ready()
         with Session(engine) as db:
             statuses=[{'email':s.email,'received_at':s.received,'delayed':now()-s.received>900000,**json.loads(s.data)} for s in db.scalars(select(StudentStatus).where(StudentStatus.received>=now()-86400000).order_by(StudentStatus.received.desc()))]
             records=[{'email':e.email,'received_at':e.received,**json.loads(e.data),'auth_state':LABEL} for e in db.scalars(select(StudentEvent).where(StudentEvent.received>=now()-86400000).order_by(StudentEvent.received.desc()).limit(600))]
+            # Only return names for observed rows, never the entire directory.
+            observed=list({row['email'] for row in statuses+records})
+            names={}
+            for offset in range(0,len(observed),400):
+                names.update({entry.email:entry.display_name for entry in db.scalars(select(StudentDirectory).where(StudentDirectory.school==cfg.school_id,StudentDirectory.email.in_(observed[offset:offset+400])))})
+            for row in statuses+records:row['display_name']=names.get(row['email'],'')
             w=db.get(TestWindow,cfg.school_id)
             return {'statuses':statuses,'events':records,'active':window_active(w),'ends_at':(w.ends or None) if w else None,'student_authenticated':False}
     @app.get('/',response_class=HTMLResponse)

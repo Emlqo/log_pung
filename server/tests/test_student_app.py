@@ -116,3 +116,51 @@ def test_policy_mode_allows_admin_devices_without_ids_but_rejects_manual_install
         assert client.post('/api/teacher/window/start').status_code==401
         client.post('/api/teacher/window/stop',auth=AUTH)
         assert upload(client,window,[event()],device_id=None).status_code==403
+
+
+DIRECTORY_CSV='First Name [Required],Last Name [Required],Email Address [Required]\n길동,홍,PILOT-A@goedu.kr\n유령,김,roster-only@goedu.kr\n'
+
+def test_directory_auth_origin_and_input_validation(client):
+    assert client.post('/api/teacher/directory',content=DIRECTORY_CSV.encode()).status_code==401
+    assert client.post('/api/teacher/directory',content=DIRECTORY_CSV.encode(),auth=AUTH,headers={'Origin':'https://other.test'}).status_code==403
+    for invalid in ['wrong,headers\nx,y',DIRECTORY_CSV+'다른,이,pilot-a@goedu.kr\n',DIRECTORY_CSV+'외부,김,user@gmail.com\n']:
+        assert client.post('/api/teacher/directory',content=invalid.encode(),auth=AUTH).status_code==422
+    assert client.post('/api/teacher/directory',content=b'x'*(2*1024*1024+1),auth=AUTH).status_code==413
+    assert client.get('/api/teacher/view',auth=AUTH).json()['statuses']==[]
+
+def test_directory_only_enriches_observed_rows_and_updates_old_records(client,config):
+    client.post('/api/student/status',json=BASE)
+    client.post('/api/student/status',json={**BASE,'email':'unknown@goedu.kr'})
+    w=begin(client);upload(client,w,[event()])
+    result=client.post('/api/teacher/directory',content=DIRECTORY_CSV.encode('utf-8-sig'),auth=AUTH)
+    assert result.status_code==200 and result.json()['matched_directory_entries']==2
+    view=client.get('/api/teacher/view',auth=AUTH).json()
+    statuses={row['email']:row for row in view['statuses']}
+    assert len(statuses)==2 and 'roster-only@goedu.kr' not in statuses
+    assert statuses[BASE['email']]['display_name']=='홍길동'
+    assert statuses['unknown@goedu.kr']['display_name']==''
+    assert view['events'][0]['display_name']=='홍길동'
+    assert 'roster-only@goedu.kr' not in str(view)
+    assert 'display_name' not in client.post('/api/student/status',json=BASE).json()
+    corrected=DIRECTORY_CSV.replace('길동,홍','수정,홍')
+    assert client.post('/api/teacher/directory',content=corrected.encode(),auth=AUTH).status_code==200
+    with TestClient(create_student_app(config)) as restarted:
+        assert restarted.get('/api/teacher/view',auth=AUTH).json()['events'][0]['display_name']=='홍수정'
+        bad=corrected.replace('수정,홍','실패,김')+'빈,,invalid\n'
+        assert restarted.post('/api/teacher/directory',content=bad.encode(),auth=AUTH).status_code==422
+        assert restarted.get('/api/teacher/view',auth=AUTH).json()['events'][0]['display_name']=='홍수정'
+
+def test_directory_school_scope_and_empty_roster_do_not_create_activity(client,config):
+    client.post('/api/teacher/directory',content=DIRECTORY_CSV.encode(),auth=AUTH)
+    assert client.get('/api/teacher/view',auth=AUTH).json()['events']==[]
+    assert client.get('/api/teacher/view',auth=AUTH).json()['statuses']==[]
+    client.post('/api/student/status',json=BASE)
+    config.school_id='another-school'
+    with TestClient(create_student_app(config)) as other:
+        assert other.get('/api/teacher/view',auth=AUTH).json()['statuses'][0]['display_name']==''
+
+def test_directory_parser_cp949_duplicate_and_safe_errors():
+    from student_directory import parse_directory
+    assert parse_directory((DIRECTORY_CSV+'길동,홍,pilot-a@goedu.kr\n').encode('cp949'))['pilot-a@goedu.kr']=='홍길동'
+    for raw in [b'',b'\xff\xff',b'First Name [Required],Last Name [Required],Email Address [Required]\n"unclosed']:
+        with pytest.raises(ValueError):parse_directory(raw)

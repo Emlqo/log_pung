@@ -14,3 +14,4 @@ local-test-dist
 student-test-dist
 release
 deploy
+**/*.csv

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {filterEvents,filterStatuses,hostOf} from '../student-dashboard-filters.js';
+import {filterEvents,filterStatuses,hostOf,studentLabel} from '../student-dashboard-filters.js';
 const now=new Date(2026,9,4,14,30).getTime();
 const events=[
  {email:'a@goedu.kr',at:now-60000,url:'https://www.google.com/search',search:'정보 수업'},
@@ -43,4 +43,14 @@ test('student selection affects connection status and clearing filters restores 
  assert.equal(filterStatuses(statuses,'').length,2);
  assert.equal(filterEvents(events,{...defaults,email:'missing@goedu.kr'},now).length,0);
  assert.equal(filterEvents(events,defaults,now).length,4);
+});
+
+
+test('directory names enrich labels and keyword matching without changing email identity',()=>{
+ const row={...events[0],display_name:'홍길동'};
+ assert.equal(studentLabel(row),'홍길동 · a@goedu.kr');
+ assert.equal(studentLabel(events[0]),'a@goedu.kr');
+ assert.equal(filterEvents([row],{...defaults,query:'홍길동'},now).length,1);
+ assert.equal(filterEvents([row],{...defaults,email:'a@goedu.kr'},now).length,1);
+ assert.equal(filterEvents([row],{...defaults,email:'홍길동'},now).length,0);
 });

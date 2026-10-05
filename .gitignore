@@ -15,3 +15,4 @@ local-test-dist/
 deploy/school-server/secrets/
 student-test-dist/
 .vercel/
+*.csv
