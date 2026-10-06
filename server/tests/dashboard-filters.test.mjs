@@ -54,3 +54,14 @@ test('directory names enrich labels and keyword matching without changing email 
  assert.equal(filterEvents([row],{...defaults,email:'a@goedu.kr'},now).length,1);
  assert.equal(filterEvents([row],{...defaults,email:'홍길동'},now).length,0);
 });
+
+
+test('aliases distinguish identical names, remain searchable, and clear to original name',()=>{
+ const first={...events[0],display_name:'김민수',alias:'2학년 1반 3번'};
+ const second={...events[0],email:'b@goedu.kr',display_name:'김민수',alias:'2학년 4반 12번'};
+ assert.equal(studentLabel(first),'김민수 · 2학년 1반 3번 · a@goedu.kr');
+ assert.equal(filterEvents([first,second],{...defaults,query:'4반 12번'},now)[0].email,'b@goedu.kr');
+ assert.equal(filterEvents([first,second],{...defaults,query:'김민수'},now).length,2);
+ assert.equal(studentLabel({...first,alias:''}),'김민수 · a@goedu.kr');
+ assert.equal(studentLabel({email:'unknown@goedu.kr',alias:'1반 5번'}),'1반 5번 · unknown@goedu.kr');
+});

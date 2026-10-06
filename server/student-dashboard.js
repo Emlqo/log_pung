@@ -5,15 +5,24 @@ const filters=()=>Object.fromEntries(['email','range','site','kind','sort','quer
 function text(tag,value,className){const node=document.createElement(tag);node.textContent=value;if(className)node.className=className;return node;}
 function choices(id,values,label,labelFor=v=>v){const select=el(id),chosen=select.value;const options=[...new Set(values.filter(Boolean))].sort();if(chosen&&!options.includes(chosen))options.push(chosen);select.replaceChildren(new Option(label,''),...options.map(v=>new Option(labelFor(v),v)));select.value=chosen;}
 function emailButton(person){const email=person.email;const button=text('button',studentLabel(person),'email-button');button.type='button';button.addEventListener('click',()=>{el('email').value=email;render();});return button;}
+function studentCell(person){
+ const wrapper=document.createElement('div');wrapper.append(emailButton(person));
+ const edit=text('button','별칭 수정','alias-edit');edit.type='button';edit.setAttribute('aria-label',studentLabel(person)+' 별칭 수정');
+ edit.addEventListener('click',()=>{
+  el('alias-form').dataset.email=person.email;el('alias-person').textContent=[person.display_name,person.email].filter(Boolean).join(' · ');
+  el('alias-input').value=person.alias||'';el('alias-error').textContent='';el('alias-dialog').showModal();el('alias-input').focus();
+ });wrapper.append(edit);return wrapper;
+}
+function studentChoices(){const observed=[...snapshot.statuses,...snapshot.events];const labels=new Map(observed.map(x=>[x.email,studentLabel(x)]));choices('email',observed.map(x=>x.email),'전체 학생',email=>labels.get(email)||email);}
 function row(values){const tr=document.createElement('tr');for(const value of values){const td=document.createElement('td');td.append(typeof value==='string'?document.createTextNode(value):value);tr.append(td);}return tr;}
 function emptyTable(id,columns,message){const tr=document.createElement('tr'),td=text('td',message,'empty');td.colSpan=columns;tr.append(td);el(id).append(tr);}
 function render(){
  if(!snapshot)return;
  const selected=filters(),events=filterEvents(snapshot.events,selected),statuses=filterStatuses(snapshot.statuses,selected.email);
  el('events').replaceChildren();el('statuses').replaceChildren();
- for(const e of events){const address=document.createElement('div');address.append(text('strong',hostOf(e.url)||'사이트 확인 불가'),text('span',e.url,'url-detail'));el('events').append(row([emailButton(e),new Date(e.at).toLocaleString('ko-KR'),address,text('span',e.search||'—',e.search?'search-term':'muted')]));}
+ for(const e of events){const address=document.createElement('div');address.append(text('strong',hostOf(e.url)||'사이트 확인 불가'),text('span',e.url,'url-detail'));el('events').append(row([studentCell(e),new Date(e.at).toLocaleString('ko-KR'),address,text('span',e.search||'—',e.search?'search-term':'muted')]));}
  if(!events.length)emptyTable('events',4,'조건에 맞는 기록이 없습니다. 필터를 바꾸거나 초기화해주세요.');
- for(const s of statuses){const state=document.createElement('div');state.append(text('span',s.delayed?'연결 지연':'최근 연결',s.delayed?'badge warning':'badge connected'));if(s.recent_error&&s.recent_error!=='none')state.append(text('span',s.recent_error,'url-detail'));const device=s.device_state==='confirmed'?(s.device_policy==='policy'?'정책 설치 대상':'승인 ID와 일치'):'기기 확인 필요';el('statuses').append(row([emailButton(s),device,s.extension_version,new Date(s.received_at).toLocaleString('ko-KR'),state]));}
+ for(const s of statuses){const state=document.createElement('div');state.append(text('span',s.delayed?'연결 지연':'최근 연결',s.delayed?'badge warning':'badge connected'));if(s.recent_error&&s.recent_error!=='none')state.append(text('span',s.recent_error,'url-detail'));const device=s.device_state==='confirmed'?(s.device_policy==='policy'?'정책 설치 대상':'승인 ID와 일치'):'기기 확인 필요';el('statuses').append(row([studentCell(s),device,s.extension_version,new Date(s.received_at).toLocaleString('ko-KR'),state]));}
  if(!statuses.length)emptyTable('statuses',5,'표시할 연결 상태가 없습니다.');
  const allEmails=new Set([...snapshot.statuses,...snapshot.events].map(x=>x.email));
  el('student-count').textContent=selected.email?(allEmails.has(selected.email)?'1':'0'):String(allEmails.size);
@@ -24,7 +33,7 @@ function render(){
 }
 async function refresh(){
  if(loading)return;loading=true;
- try{const r=await fetch('/api/teacher/view',{cache:'no-store'});if(!r.ok)throw Error('HTTP '+r.status);const data=await r.json();snapshot={...data,updated:Date.now()};const observed=[...data.statuses,...data.events];const labels=new Map(observed.map(x=>[x.email,studentLabel(x)]));choices('email',observed.map(x=>x.email),'전체 학생',email=>labels.get(email)||email);choices('site',data.events.map(x=>hostOf(x.url)),'전체 사이트');render();el('message').textContent=data.active?'OFF를 누를 때까지 수집합니다.':'학생 확장은 최대 5분 뒤 ON을 확인합니다.';el('collection-state').textContent=data.active?'수집 ON':'수집 OFF';el('collection-state').className=data.active?'badge connected':'badge';}
+ try{const r=await fetch('/api/teacher/view',{cache:'no-store'});if(!r.ok)throw Error('HTTP '+r.status);const data=await r.json();snapshot={...data,updated:Date.now()};studentChoices();choices('site',data.events.map(x=>hostOf(x.url)),'전체 사이트');render();el('message').textContent=data.active?'OFF를 누를 때까지 수집합니다.':'학생 확장은 최대 5분 뒤 ON을 확인합니다.';el('collection-state').textContent=data.active?'수집 ON':'수집 OFF';el('collection-state').className=data.active?'badge connected':'badge';}
  catch(e){el('message').textContent='조회 실패: '+String(e)+' · 기존 표는 마지막 성공 시점의 데이터입니다.';el('collection-state').textContent='연결 확인 필요';el('collection-state').className='badge warning';}
  finally{loading=false;}
 }
@@ -44,4 +53,18 @@ el('directory-upload').addEventListener('submit',async event=>{
   el('directory-file').value='';await refresh();
  }catch(error){el('directory-message').textContent='명단 등록 실패: '+String(error);}
  finally{button.disabled=false;}
+});
+
+el('alias-cancel').addEventListener('click',()=>el('alias-dialog').close());
+el('alias-dialog').addEventListener('cancel',event=>{if(el('alias-save').disabled)event.preventDefault();});
+el('alias-form').addEventListener('submit',async event=>{
+ event.preventDefault();const email=el('alias-form').dataset.email,alias=el('alias-input').value;
+ const buttons=[el('alias-save'),el('alias-cancel')];buttons.forEach(button=>button.disabled=true);el('alias-error').textContent='';
+ try{
+  const response=await fetch('/api/teacher/alias',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,alias})});
+  const result=await response.json();if(!response.ok)throw Error(typeof result.detail==='string'?result.detail:'별칭을 저장할 수 없습니다. 입력 내용과 로그인을 확인해주세요.');
+  if(snapshot){for(const row of [...snapshot.statuses,...snapshot.events])if(row.email===email)row.alias=result.alias;studentChoices();render();}
+  el('alias-dialog').close();
+ }catch(error){el('alias-error').textContent=String(error);}
+ finally{buttons.forEach(button=>button.disabled=false);}
 });

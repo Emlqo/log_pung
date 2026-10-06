@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from fastapi import FastAPI, Depends, HTTPException, Request
 from fastapi.security import HTTPBasic
 from fastapi.responses import HTMLResponse, Response, JSONResponse, FileResponse
-from pydantic import ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import create_engine, Column, String, BigInteger, Integer, Text, select, delete, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import DeclarativeBase, Session
@@ -44,6 +44,12 @@ class StudentDirectory(StudentBase):
     school=Column(String(64),primary_key=True)
     email=Column(String(254),primary_key=True)
     display_name=Column(String(200),nullable=False)
+
+class StudentAlias(StudentBase):
+    __tablename__='student_alias'
+    school=Column(String(64),primary_key=True)
+    email=Column(String(254),primary_key=True)
+    alias=Column(String(80),nullable=False)
 
 class StudentStatus(StudentBase):
     __tablename__='student_email_test_status'
@@ -78,6 +84,22 @@ class EmailReport(Report):
 class EventReport(EmailReport):
     window_id: str = Field(min_length=36,max_length=36)
     events: list[Event] = Field(min_length=1,max_length=20)
+
+class AliasUpdate(BaseModel):
+    model_config=ConfigDict(extra='forbid')
+    email: str=Field(max_length=254)
+    alias: str=Field(max_length=80)
+    @field_validator('email')
+    @classmethod
+    def normalize_email(cls,value):
+        value=value.strip().lower()
+        if not re.fullmatch(r'[^@\s]+@goedu\.kr',value):raise ValueError('학교 이메일 필요')
+        return value
+    @field_validator('alias')
+    @classmethod
+    def normalize_alias(cls,value):
+        if any(ord(c)<32 or ord(c)==127 for c in value):raise ValueError('별칭에는 줄바꿈이나 제어 문자를 사용할 수 없습니다.')
+        return value.strip()
 
 def now(): return int(time.time()*1000)
 def window_active(w):return bool(w and w.starts is not None and w.ends is not None and w.starts<=now() and (w.ends==0 or now()<w.ends))
@@ -230,6 +252,23 @@ def create_student_app(cfg=None):
                 db.commit()
         except SQLAlchemyError:raise HTTPException(503,'명단 저장 실패 · 잠시 후 다시 시도해주세요.') from None
         return {'matched_directory_entries':len(names)}
+    @app.post('/api/teacher/alias')
+    def save_alias(update:AliasUpdate,_teacher=Depends(teacher)):
+        ready()
+        if engine.dialect.name=='postgresql':
+            from sqlalchemy.dialects.postgresql import insert
+        else:
+            from sqlalchemy.dialects.sqlite import insert
+        try:
+            with Session(engine) as db:
+                if update.alias:
+                    statement=insert(StudentAlias).values(school=cfg.school_id,email=update.email,alias=update.alias)
+                    db.execute(statement.on_conflict_do_update(index_elements=['school','email'],set_={'alias':statement.excluded.alias}))
+                else:
+                    db.execute(delete(StudentAlias).where(StudentAlias.school==cfg.school_id,StudentAlias.email==update.email))
+                db.commit()
+        except SQLAlchemyError:raise HTTPException(503,'별칭 저장 실패 · 잠시 후 다시 시도해주세요.') from None
+        return {'email':update.email,'alias':update.alias}
     @app.get('/api/teacher/view')
     def view(_teacher=Depends(teacher)):
         ready()
@@ -238,10 +277,13 @@ def create_student_app(cfg=None):
             records=[{'email':e.email,'received_at':e.received,**json.loads(e.data),'auth_state':LABEL} for e in db.scalars(select(StudentEvent).where(StudentEvent.received>=now()-86400000).order_by(StudentEvent.received.desc()).limit(600))]
             # Only return names for observed rows, never the entire directory.
             observed=list({row['email'] for row in statuses+records})
-            names={}
+            names={};aliases={}
             for offset in range(0,len(observed),400):
                 names.update({entry.email:entry.display_name for entry in db.scalars(select(StudentDirectory).where(StudentDirectory.school==cfg.school_id,StudentDirectory.email.in_(observed[offset:offset+400])))})
-            for row in statuses+records:row['display_name']=names.get(row['email'],'')
+                aliases.update({entry.email:entry.alias for entry in db.scalars(select(StudentAlias).where(StudentAlias.school==cfg.school_id,StudentAlias.email.in_(observed[offset:offset+400])))})
+            for row in statuses+records:
+                row['display_name']=names.get(row['email'],'')
+                row['alias']=aliases.get(row['email'],'')
             w=db.get(TestWindow,cfg.school_id)
             return {'statuses':statuses,'events':records,'active':window_active(w),'ends_at':(w.ends or None) if w else None,'student_authenticated':False}
     @app.get('/',response_class=HTMLResponse)

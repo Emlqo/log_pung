@@ -164,3 +164,40 @@ def test_directory_parser_cp949_duplicate_and_safe_errors():
     assert parse_directory((DIRECTORY_CSV+'길동,홍,pilot-a@goedu.kr\n').encode('cp949'))['pilot-a@goedu.kr']=='홍길동'
     for raw in [b'',b'\xff\xff',b'First Name [Required],Last Name [Required],Email Address [Required]\n"unclosed']:
         with pytest.raises(ValueError):parse_directory(raw)
+
+
+def test_alias_requires_teacher_and_rejects_bad_input_and_cross_origin(client):
+    value={'email':BASE['email'],'alias':'2학년 1반 3번'}
+    assert client.post('/api/teacher/alias',json=value).status_code==401
+    assert client.post('/api/teacher/alias',json=value,auth=AUTH,headers={'Origin':'https://other.test'}).status_code==403
+    for bad in [{**value,'alias':'x'*81},{**value,'alias':'line\nfeed'},{**value,'email':'x@gmail.com'},{**value,'alias':None},{**value,'admin':True}]:
+        assert client.post('/api/teacher/alias',json=bad,auth=AUTH).status_code==422
+    assert client.get('/api/teacher/view',auth=AUTH).json()['statuses']==[]
+
+def test_alias_separates_same_names_persists_reimport_and_clear_restores_name(client,config):
+    roster=DIRECTORY_CSV+'길동,홍,pilot-b@goedu.kr\n'
+    client.post('/api/teacher/directory',content=roster.encode(),auth=AUTH)
+    for email in [BASE['email'],'pilot-b@goedu.kr']:client.post('/api/student/status',json={**BASE,'email':email})
+    w=begin(client);upload(client,w,[event()])
+    for email,alias in [(' PILOT-A@GOEDU.KR ',' 2학년 1반 3번 '),('pilot-b@goedu.kr','2학년 4반 12번')]:
+        response=client.post('/api/teacher/alias',json={'email':email,'alias':alias},auth=AUTH)
+        assert response.status_code==200 and response.json()['alias']==alias.strip()
+    client.post('/api/teacher/directory',content=roster.encode(),auth=AUTH)
+    with TestClient(create_student_app(config)) as restarted:
+        view=restarted.get('/api/teacher/view',auth=AUTH).json()
+        aliases={row['email']:row['alias'] for row in view['statuses']}
+        assert aliases=={BASE['email']:'2학년 1반 3번','pilot-b@goedu.kr':'2학년 4반 12번'}
+        assert view['events'][0]['alias']=='2학년 1반 3번'
+        assert view['events'][0]['display_name']=='홍길동'
+        assert restarted.post('/api/teacher/alias',json={'email':BASE['email'],'alias':'   '},auth=AUTH).status_code==200
+        row=restarted.get('/api/teacher/view',auth=AUTH).json()['events'][0]
+        assert row['alias']=='' and row['display_name']=='홍길동'
+
+def test_alias_without_activity_stays_hidden_and_other_school_does_not_leak(client,config):
+    client.post('/api/teacher/alias',json={'email':BASE['email'],'alias':'private-label'},auth=AUTH)
+    view=client.get('/api/teacher/view',auth=AUTH).json()
+    assert view['statuses']==[] and view['events']==[] and 'private-label' not in str(view)
+    client.post('/api/student/status',json=BASE)
+    config.school_id='other-school'
+    with TestClient(create_student_app(config)) as other:
+        assert other.get('/api/teacher/view',auth=AUTH).json()['statuses'][0]['alias']==''

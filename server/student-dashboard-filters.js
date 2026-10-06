@@ -11,9 +11,9 @@ export function filterEvents(events,filters,now=Date.now()){
   if(filters.site&&hostOf(e.url)!==filters.site)return false;
   if(filters.kind==='search'&&!e.search)return false;
   if(filters.kind==='visit'&&e.search)return false;
-  return !query||normalized([e.display_name,e.email,e.url,e.search].join(' ')).includes(query);
+  return !query||normalized([e.display_name,e.alias,e.email,e.url,e.search].join(' ')).includes(query);
  }).sort((a,b)=>filters.sort==='oldest'?a.at-b.at:b.at-a.at);
 }
 export function filterStatuses(statuses,email){return statuses.filter(s=>!email||s.email===email);}
 
-export function studentLabel(row){return row.display_name?`${row.display_name} · ${row.email}`:row.email;}
+export function studentLabel(row){return [row.display_name,row.alias,row.email].filter(Boolean).join(' · ');}
