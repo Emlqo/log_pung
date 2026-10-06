@@ -14,7 +14,7 @@ from fastapi import FastAPI, Depends, HTTPException, Request
 from fastapi.security import HTTPBasic
 from fastapi.responses import HTMLResponse, Response, JSONResponse, FileResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from sqlalchemy import create_engine, Column, String, BigInteger, Integer, Text, select, delete, text
+from sqlalchemy import create_engine, Column, String, BigInteger, Integer, Text, select, delete, text, func
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import DeclarativeBase, Session
 from sqlalchemy.pool import NullPool
@@ -22,10 +22,12 @@ try:
     from .app import Report, password_matches
     from .local_test_app import Event
     from .student_directory import parse_directory, MAX_DIRECTORY_BYTES
+    from .student_roster import parse_roster, match_students, MAX_ROSTER_BYTES
 except ImportError:
     from app import Report, password_matches
     from local_test_app import Event
     from student_directory import parse_directory, MAX_DIRECTORY_BYTES
+    from student_roster import parse_roster, match_students, MAX_ROSTER_BYTES
 
 LABEL = '인증되지 않은 계정 정보'
 
@@ -39,6 +41,36 @@ class StudentSettings:
     enabled: bool = field(default_factory=lambda: os.getenv('STUDENT_TEST_ENABLED','false')=='true')
 
 class StudentBase(DeclarativeBase): pass
+class StudentMigration(StudentBase):
+    __tablename__='student_migration'
+    school=Column(String(64),primary_key=True)
+    name=Column(String(64),primary_key=True)
+
+class KnownStudent(StudentBase):
+    __tablename__='known_student'
+    school=Column(String(64),primary_key=True)
+    email=Column(String(254),primary_key=True)
+    first_seen=Column(BigInteger,nullable=False)
+    last_seen=Column(BigInteger,nullable=False)
+
+class ClassRoster(StudentBase):
+    __tablename__='class_roster'
+    school=Column(String(64),primary_key=True)
+    year=Column(Integer,primary_key=True)
+    grade=Column(Integer,primary_key=True)
+    classroom=Column(Integer,primary_key=True)
+    number=Column(Integer,primary_key=True)
+    name=Column(String(200),nullable=False)
+
+class ClassAssignment(StudentBase):
+    __tablename__='class_assignment'
+    school=Column(String(64),primary_key=True)
+    year=Column(Integer,primary_key=True)
+    email=Column(String(254),primary_key=True)
+    grade=Column(Integer,nullable=False)
+    classroom=Column(Integer,nullable=False)
+    number=Column(Integer,nullable=True)
+
 class StudentDirectory(StudentBase):
     __tablename__='student_directory'
     school=Column(String(64),primary_key=True)
@@ -101,6 +133,18 @@ class AliasUpdate(BaseModel):
         if any(ord(c)<32 or ord(c)==127 for c in value):raise ValueError('별칭에는 줄바꿈이나 제어 문자를 사용할 수 없습니다.')
         return value.strip()
 
+class ClassUpdate(BaseModel):
+    model_config=ConfigDict(extra='forbid',strict=True)
+    email: str=Field(max_length=254)
+    year: int=Field(ge=2020,le=2100)
+    grade: int|None=Field(default=None,ge=1,le=12)
+    classroom: int|None=Field(default=None,ge=1,le=99)
+    number: int|None=Field(default=None,ge=1,le=999)
+    reset: bool=False
+    @field_validator('email')
+    @classmethod
+    def email_format(cls,value):return AliasUpdate.normalize_email(value)
+
 def now(): return int(time.time()*1000)
 def window_active(w):return bool(w and w.starts is not None and w.ends is not None and w.starts<=now() and (w.ends==0 or now()<w.ends))
 
@@ -113,6 +157,13 @@ def create_student_app(cfg=None):
     engine=create_engine(cfg.database_url, poolclass=NullPool, connect_args={'check_same_thread':False} if cfg.database_url.startswith('sqlite') else {}) if cfg.database_url else None
     initialized=False
     initialization_lock=Lock()
+    if engine and engine.dialect.name=='postgresql':
+        from sqlalchemy.dialects.postgresql import insert as dialect_insert
+    else:
+        from sqlalchemy.dialects.sqlite import insert as dialect_insert
+    def remember(db,email,stamp):
+        statement=dialect_insert(KnownStudent).values(school=cfg.school_id,email=email,first_seen=stamp,last_seen=stamp)
+        db.execute(statement.on_conflict_do_update(index_elements=['school','email'],set_={'last_seen':statement.excluded.last_seen},where=KnownStudent.last_seen<stamp))
     def initialize_database():
         # Some serverless adapters do not send ASGI lifespan events.
         nonlocal initialized
@@ -124,6 +175,14 @@ def create_student_app(cfg=None):
                     # Serialize initial DDL across concurrently starting instances.
                     connection.execute(text('SELECT pg_advisory_xact_lock(724019062)'))
                 StudentBase.metadata.create_all(connection)
+                # Preserve existing observed identities before the old 24-hour cleanup.
+                migrated=connection.execute(select(StudentMigration.name).where(StudentMigration.school==cfg.school_id,StudentMigration.name=='known-students-v1')).first()
+                if not migrated:
+                    for email,received,data in connection.execute(select(StudentStatus.email,StudentStatus.received,StudentStatus.data)):
+                        if json.loads(data).get('school_id')==cfg.school_id:remember(connection,email,received)
+                    for email,received in connection.execute(select(StudentEvent.email,func.max(StudentEvent.received)).join(TestWindow,StudentEvent.window_id==TestWindow.window_id).where(TestWindow.school==cfg.school_id).group_by(StudentEvent.email)):
+                        remember(connection,email,received)
+                    connection.execute(dialect_insert(StudentMigration).values(school=cfg.school_id,name='known-students-v1').on_conflict_do_nothing())
                 connection.execute(delete(StudentEvent).where(StudentEvent.received<now()-86400000))
                 connection.execute(delete(StudentStatus).where(StudentStatus.received<now()-86400000))
             initialized=True
@@ -153,7 +212,7 @@ def create_student_app(cfg=None):
     @app.middleware('http')
     async def limits(request:Request,call_next):
         if request.url.path.startswith('/api/'):
-            maximum=MAX_DIRECTORY_BYTES if request.url.path=='/api/teacher/directory' else 65536
+            maximum=MAX_DIRECTORY_BYTES if request.url.path=='/api/teacher/directory' else MAX_ROSTER_BYTES if request.url.path=='/api/teacher/roster' else 65536
             chunks=[];size=0
             async for chunk in request.stream():
                 size+=len(chunk)
@@ -192,7 +251,7 @@ def create_student_app(cfg=None):
         data=report.model_dump();data['device_state']='confirmed' if device(report) else 'needs_check';data['auth_state']=LABEL;data['device_policy']=cfg.device_policy
         with Session(engine) as db:
             row=db.get(StudentStatus,report.email) or StudentStatus(email=report.email)
-            row.received=now();row.data=json.dumps(data);db.add(row);db.commit()
+            row.received=now();row.data=json.dumps(data);db.add(row);remember(db,report.email,row.received);db.commit()
         return {'accepted':True,'student_authenticated':False,'device_state':data['device_state']}
     @app.post('/api/student/events')
     def events(report:EventReport):
@@ -215,6 +274,7 @@ def create_student_app(cfg=None):
                     db.add(StudentEvent(key=key,email=report.email,window_id=w.window_id,received=now(),data=data));budget.count+=1;db.flush()
                 accepted.append(event.id)
             db.add(budget)
+            remember(db,report.email,now())
             db.execute(delete(StudentEvent).where(StudentEvent.received<now()-86400000));db.commit()
         return {'accepted_ids':accepted,'student_authenticated':False}
     @app.post('/api/teacher/window/start')
@@ -286,6 +346,54 @@ def create_student_app(cfg=None):
                 row['alias']=aliases.get(row['email'],'')
             w=db.get(TestWindow,cfg.school_id)
             return {'statuses':statuses,'events':records,'active':window_active(w),'ends_at':(w.ends or None) if w else None,'student_authenticated':False}
+    def check_year(year):
+        if not 2020<=year<=2100:raise HTTPException(422,'학년도는 2020~2100 사이여야 합니다.')
+    @app.post('/api/teacher/roster')
+    async def upload_roster(request:Request,year:int,_teacher=Depends(teacher)):
+        ready();check_year(year)
+        try:rows=parse_roster(await request.body(),year)
+        except ValueError as error:raise HTTPException(422,str(error)) from None
+        try:
+            with Session(engine) as db:
+                grades={r['grade'] for r in rows}
+                db.execute(delete(ClassRoster).where(ClassRoster.school==cfg.school_id,ClassRoster.year==year,ClassRoster.grade.in_(grades)))
+                for offset in range(0,len(rows),100):
+                    db.execute(dialect_insert(ClassRoster).values([dict(school=cfg.school_id,year=year,**r) for r in rows[offset:offset+100]]))
+                db.commit()
+        except SQLAlchemyError:raise HTTPException(503,'명렬표 저장 실패 · 기존 배정은 유지됩니다.') from None
+        return {'entries':len(rows),'classes':len({(r['grade'],r['classroom']) for r in rows})}
+    @app.get('/api/teacher/classes')
+    def classes(year:int,_teacher=Depends(teacher)):
+        ready();check_year(year)
+        with Session(engine) as db:
+            known=[dict(email=r.email,first_seen=r.first_seen,last_seen=r.last_seen) for r in db.scalars(select(KnownStudent).where(KnownStudent.school==cfg.school_id))]
+            directory={r.email:r.display_name for r in db.scalars(select(StudentDirectory).where(StudentDirectory.school==cfg.school_id))}
+            aliases={r.email:r.alias for r in db.scalars(select(StudentAlias).where(StudentAlias.school==cfg.school_id))}
+            roster=[dict(grade=r.grade,classroom=r.classroom,number=r.number,name=r.name) for r in db.scalars(select(ClassRoster).where(ClassRoster.school==cfg.school_id,ClassRoster.year==year))]
+            overrides={r.email:dict(grade=r.grade,classroom=r.classroom,number=r.number) for r in db.scalars(select(ClassAssignment).where(ClassAssignment.school==cfg.school_id,ClassAssignment.year==year))}
+            groups=sorted({(r['grade'],r['classroom']) for r in roster+list(overrides.values())})
+            return {'year':year,'roster_entries':len(roster),'classes':[dict(grade=g,classroom=c) for g,c in groups],
+                    'students':match_students(known,directory,aliases,roster,overrides)}
+    @app.post('/api/teacher/class-assignment')
+    def assign(update:ClassUpdate,_teacher=Depends(teacher)):
+        ready()
+        try:
+            with Session(engine) as db:
+                if not db.get(KnownStudent,(cfg.school_id,update.email)):raise HTTPException(404,'아직 등록되지 않은 학생입니다.')
+                if update.reset:
+                    db.execute(delete(ClassAssignment).where(ClassAssignment.school==cfg.school_id,ClassAssignment.year==update.year,ClassAssignment.email==update.email))
+                else:
+                    if update.grade is None or update.classroom is None:raise HTTPException(422,'학년과 반을 선택해주세요. 번호는 선택사항입니다.')
+                    # Serialize same-school assignments to avoid conflicting manual seat edits.
+                    if engine.dialect.name=='postgresql':db.execute(text('SELECT pg_advisory_xact_lock(hashtext(:school))'),{'school':cfg.school_id})
+                    if update.number is not None and db.scalar(select(ClassAssignment.email).where(ClassAssignment.school==cfg.school_id,ClassAssignment.year==update.year,ClassAssignment.grade==update.grade,ClassAssignment.classroom==update.classroom,ClassAssignment.number==update.number,ClassAssignment.email!=update.email)):
+                        raise HTTPException(409,'해당 번호에 수동 배정된 학생이 있습니다. 번호를 비우거나 확인해주세요.')
+                    values=update.model_dump(exclude={'reset'});values['school']=cfg.school_id
+                    statement=dialect_insert(ClassAssignment).values(**values)
+                    db.execute(statement.on_conflict_do_update(index_elements=['school','year','email'],set_={k:getattr(statement.excluded,k) for k in ('grade','classroom','number')}))
+                db.commit()
+        except SQLAlchemyError:raise HTTPException(503,'반 배정 저장 실패 · 다시 시도해주세요.') from None
+        return {'saved':True}
     @app.get('/',response_class=HTMLResponse)
     def dashboard(_teacher=Depends(teacher)):return Path(__file__).with_name('student-dashboard.html').read_text(encoding='utf-8')
     @app.get('/student-dashboard.js')

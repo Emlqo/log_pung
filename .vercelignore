@@ -15,3 +15,6 @@ student-test-dist
 release
 deploy
 **/*.csv
+
+**/*.xlsx
+**/*.xls

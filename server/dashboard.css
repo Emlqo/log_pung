@@ -8,3 +8,22 @@ body{font:15px/1.6 system-ui;background:#f4f7fb;color:#172b45;margin:0}main{max-
 .monitor dialog input{display:block;box-sizing:border-box;width:100%;padding:10px;border:1px solid #cdd7e5;border-radius:8px;font:inherit;margin:6px 0}
 .monitor dialog .actions{justify-content:flex-end;margin-top:16px}
 #alias-person{overflow-wrap:anywhere}#alias-error{color:#a82a33}
+
+.monitor [hidden]{display:none!important}
+.view-tabs{display:flex;gap:10px;margin:22px 0}
+.class-tools{display:flex;gap:16px;flex-wrap:wrap;margin:16px 0}
+.class-tools label{display:flex;flex-direction:column;gap:7px}
+.class-tools input[type=number]{width:105px}
+.class-group{border-top:1px solid #dce5ed;padding:14px 0}
+.class-students{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,360px),1fr));gap:10px;list-style:none;padding:0}
+.class-students li{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px;background:#f5f8fb;border-radius:10px;min-width:0}
+.class-students li>div{min-width:0;overflow-wrap:anywhere}
+.class-students p{margin:7px 0 0;font-size:13px}
+.class-students li>button{flex-shrink:0}
+.needs-check{color:#9a4c09}
+#class-dialog{width:min(540px,calc(100vw - 48px));border:1px solid #dce5ed;border-radius:16px;padding:24px}
+#class-dialog::backdrop{background:rgb(15 23 42 / 40%)}
+#class-error{color:#a52828}
+
+.class-tools input,.class-tools select{font:inherit;border:1px solid #cbd5e1;border-radius:8px;padding:9px 11px;background:#fff;color:#172b4d;min-height:40px;box-sizing:border-box}
+.class-tools input[type=search]{width:min(290px,100%)}

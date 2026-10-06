@@ -17,3 +17,9 @@ export function filterEvents(events,filters,now=Date.now()){
 export function filterStatuses(statuses,email){return statuses.filter(s=>!email||s.email===email);}
 
 export function studentLabel(row){return [row.display_name,row.alias,row.email].filter(Boolean).join(' · ');}
+const koreanNames=new Intl.Collator('ko-KR',{numeric:true,sensitivity:'base'});
+export function sortStudents(rows){return [...rows].sort((a,b)=>{
+ const an=(a.display_name||'').trim(),bn=(b.display_name||'').trim();
+ if(Boolean(an)!==Boolean(bn))return an?-1:1;
+ return koreanNames.compare(an,bn)||koreanNames.compare(a.email,b.email);
+});}

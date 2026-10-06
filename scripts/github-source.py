@@ -12,7 +12,7 @@ for path in sorted(set(files)):
     if not path.is_file():continue
     rel=path.relative_to(root)
     if any(p in {'__pycache__','.pytest_cache','secrets','node_modules','.venv','.git','.vercel'} for p in rel.parts):continue
-    if path.name=='.env' or path.suffix in {'.csv','.db','.pyc','.pem','.key','.crx','.zip','.png'}:continue
+    if path.name=='.env' or path.suffix in {'.xlsx','.xls','.csv','.db','.pyc','.pem','.key','.crx','.zip','.png'}:continue
     content=path.read_text(encoding='utf-8')
     if any(('-----BEGIN '+kind+'-----') in content for kind in ('PRIVATE KEY','RSA PRIVATE KEY')):
         raise SystemExit('Private key material refused')

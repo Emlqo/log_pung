@@ -96,3 +96,5 @@ npm.cmd run zip
 서버 기본 DB는 SQLite입니다. 운영 기준은 SQLAlchemy를 통한 PostgreSQL이며 `DATABASE_URL=postgresql+psycopg://…`로 선택합니다. `compose.yaml`은 로컬 PostgreSQL 개발 구성을 제공합니다. PostgreSQL 실연결은 이 환경에서 미검증입니다. 학교·계정·기기별 최신 상태 1건을 갱신하고 기본 14일이 지난 행은 시작/수신 시 삭제하며 조회에서 제외합니다. 장기 이력·정기 보고서를 만들지 않습니다.
 
 `docs/DEPLOYMENT.md`의 실제 기기 검증을 통과하기 전, 추가 로그인 없는 운영이 가능하다고 결론 내릴 수 없습니다.
+
+반별 학생 명단과 수동 배정은 [반별 학생 사용 안내](docs/student-classes.md)를 참고하세요.

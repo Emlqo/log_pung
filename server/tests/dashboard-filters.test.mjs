@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {filterEvents,filterStatuses,hostOf,studentLabel} from '../student-dashboard-filters.js';
+import {filterEvents,filterStatuses,hostOf,studentLabel,sortStudents} from '../student-dashboard-filters.js';
 const now=new Date(2026,9,4,14,30).getTime();
 const events=[
  {email:'a@goedu.kr',at:now-60000,url:'https://www.google.com/search',search:'정보 수업'},
@@ -64,4 +64,10 @@ test('aliases distinguish identical names, remain searchable, and clear to origi
  assert.equal(filterEvents([first,second],{...defaults,query:'김민수'},now).length,2);
  assert.equal(studentLabel({...first,alias:''}),'김민수 · a@goedu.kr');
  assert.equal(studentLabel({email:'unknown@goedu.kr',alias:'1반 5번'}),'1반 5번 · unknown@goedu.kr');
+});
+
+test('student choices use original Korean name order, preserving aliases and email ties',()=>{
+ const rows=[{display_name:'다학생',email:'a@goedu.kr',alias:'가별칭'},{display_name:'가학생',email:'z@goedu.kr'},{display_name:'가학생',email:'b@goedu.kr'},{email:'empty@goedu.kr'}];
+ assert.deepEqual(sortStudents(rows).map(r=>r.email),['b@goedu.kr','z@goedu.kr','a@goedu.kr','empty@goedu.kr']);
+ assert.equal(rows[0].display_name,'다학생');
 });

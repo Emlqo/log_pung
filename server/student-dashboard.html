@@ -3,6 +3,15 @@
 <body><main class="monitor">
 <header class="heading"><div><p class="eyebrow">CLASSROOM MONITOR</p><h1>수업 활동 모니터링</h1><p>학생별 방문과 검색 활동을 확인하세요.</p></div><span id="collection-state" class="badge">상태 확인 중</span></header>
 <section class="control-bar" aria-label="수집 제어"><div class="actions"><button id="start" class="primary">ON · 수집 시작</button><button id="stop" class="stop">OFF · 수집 중지</button><button id="refresh">새로고침</button></div><p id="message" role="status">서버 연결 확인 중</p></section>
+<nav class="view-tabs" aria-label="모니터링 화면"><button id="tab-classes" aria-pressed="true" class="primary">반별 학생</button><button id="tab-records" aria-pressed="false">기록 검색</button></nav>
+<section id="classes-panel" class="panel">
+<div class="section-heading"><h2>반별 학생</h2><button id="classes-refresh">명단 새로고침</button></div>
+<div class="class-tools"><label>학년도 <input id="class-year" type="number" min="2020" max="2100" value="2026"></label><label>반 선택 <select id="class-filter"><option value="all">전체 반</option><option value="unassigned">! 확인 필요</option></select></label><label>학생 찾기 <input id="class-query" type="search" placeholder="이름 · 별칭 · 이메일"></label></div>
+<p class="muted">실제 연결된 학생만 표시합니다. 이름을 누르면 해당 학생의 기록으로 이동합니다. 명단 새로고침으로 늦게 연결된 학생도 확인하세요.</p>
+<details><summary>명렬표 올리기</summary><p>학년·반·번호·성명 열이 있는 XLSX를 올려주세요. 이름이 유일한 학생만 자동 배정하며, 수동 배정은 유지됩니다. 같은 학년의 기존 명렬표를 교체합니다.</p><form id="roster-upload"><input id="roster-file" type="file" accept=".xlsx" required aria-label="명렬표 XLSX"><button id="roster-save">명렬표 연결</button></form></details>
+<p id="classes-message" role="status"></p><div id="class-groups"></div>
+</section>
+<div id="records-panel" hidden>
 <section class="summary" aria-label="조회 요약"><div><span>조회된 학생</span><strong id="student-count">—</strong></div><div><span>최근 연결 · 15분 이내</span><strong id="connected-count">—</strong></div><div><span>필터에 맞는 기록</span><strong id="record-count">—</strong></div><div><span>필터에 맞는 검색</span><strong id="search-count">—</strong></div></section>
 <section class="panel"><div class="section-heading"><h2>방문·검색 기록</h2><button id="reset" class="text-button">필터 초기화</button></div>
 <form id="filters" class="filters" autocomplete="off">
@@ -17,7 +26,9 @@
 <div class="scroll"><table><thead><tr><th>학생 · 이메일</th><th>시각</th><th>사이트 / 방문 URL</th><th>검색어</th></tr></thead><tbody id="events"></tbody></table></div>
 </section>
 <details class="panel" open><summary>학생 연결 상태 <span id="status-count" class="muted"></span></summary><p class="muted">학생 이메일을 클릭하면 해당 학생의 기록으로 필터링됩니다. 연결 지연은 기기 미사용을 의미하지 않습니다.</p><div class="scroll"><table><thead><tr><th>학생 · 이메일</th><th>기기 조건</th><th>확장 버전</th><th>마지막 연결</th><th>상태 / 최근 오류</th></tr></thead><tbody id="statuses"></tbody></table></div></details>
+</div>
 <details class="panel"><summary>학생 이름 연결</summary><p>Google 관리자에서 내보낸 CSV를 등록하면 실제 연결·활동 기록의 이메일에 이름을 붙입니다. 명단만 있는 사람은 목록에 추가하지 않습니다.</p><form id="directory-upload"><label>학생 명단 CSV <input id="directory-file" type="file" accept=".csv,text/csv" required></label><button id="directory-save" type="submit">명단 연결</button></form><p id="directory-message" role="status"></p></details>
 <details class="disclosure"><summary>수집 범위와 표시 정보</summary><p>일반 주소의 쿼리·fragment, 페이지 내용, 이전 방문기록은 수집하지 않습니다. 지원 검색어만 별도로 표시합니다. 이메일과 기기 조건은 확장이 보낸 값이며 서버에서 본인·기기를 인증한 정보가 아닙니다. 정책 설치된 계정 프로필의 기기를 대상으로 교사가 ON/OFF로 제어합니다.</p></details>
 <dialog id="alias-dialog" aria-labelledby="alias-title"><form id="alias-form"><h2 id="alias-title">별칭 수정</h2><p id="alias-person" class="muted"></p><label for="alias-input">별칭</label><input id="alias-input" type="text" maxlength="80" placeholder="예: 2학년 1반 3번" autocomplete="off"><p class="muted">빈칸으로 저장하면 별칭이 지워집니다.</p><p id="alias-error" role="alert"></p><div class="actions"><button id="alias-cancel" type="button">취소</button><button id="alias-save" type="submit" class="primary">저장</button></div></form></dialog>
+<dialog id="class-dialog" aria-labelledby="class-title"><form id="class-form"><h2 id="class-title">반 배정 · 이동</h2><p id="class-person"></p><div class="class-tools"><label>학년 <input id="assign-grade" type="number" min="1" max="12" required></label><label>반 <input id="assign-room" type="number" min="1" max="99" required></label><label>번호 (선택) <input id="assign-number" type="number" min="1" max="999" placeholder="몰라도 됩니다"></label></div><p class="muted">번호를 몰라도 학년과 반만으로 저장할 수 있습니다. 수동 배정은 명단 새로고침과 재업로드 후에도 유지됩니다.</p><p id="class-error" role="alert"></p><div class="actions"><button id="class-cancel" type="button">취소</button><button id="class-auto" type="button">자동 배정으로 되돌리기</button><button id="class-save" class="primary">저장</button></div></form></dialog>
 </main><script src="/student-dashboard.js" type="module"></script></body></html>

@@ -16,3 +16,6 @@ deploy/school-server/secrets/
 student-test-dist/
 .vercel/
 *.csv
+
+*.xlsx
+*.xls

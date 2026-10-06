@@ -27,3 +27,7 @@ typing-inspection==0.4.4
 typing_extensions==4.16.0
 tzdata==2026.4
 uvicorn==0.54.0
+
+openpyxl==3.1.5
+defusedxml==0.7.1
+et-xmlfile==2.0.0
