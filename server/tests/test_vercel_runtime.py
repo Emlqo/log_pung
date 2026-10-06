@@ -44,3 +44,12 @@ def test_deployment_routes_every_request_to_python_function():
     assert config['builds']==[{'src':'index.py','use':'@vercel/python'}]
     assert config['routes']==[{'src':'/(.*)','dest':'/index.py'}]
     assert (ROOT/'requirements.txt').is_file()
+
+
+def test_excel_dependencies_declared_in_both_deployment_manifests():
+    import tomllib
+    from packaging.requirements import Requirement
+    pyproject=tomllib.loads((ROOT/'pyproject.toml').read_text(encoding='utf-8'))
+    declared={Requirement(value).name for value in pyproject['project']['dependencies']}
+    requirements={Requirement(value).name for value in (ROOT/'requirements.txt').read_text().splitlines() if value.strip() and not value.startswith('#')}
+    assert {'openpyxl','defusedxml','et-xmlfile'} <= declared & requirements

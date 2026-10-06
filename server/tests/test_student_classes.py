@@ -132,3 +132,16 @@ def test_zip_expansion_limit():
     with ZipFile(stream,'w') as z:
         for i in range(201):z.writestr(str(i),'')
     with pytest.raises(ValueError):parse_roster(stream.getvalue(),2026)
+
+
+def test_missing_excel_dependency_returns_safe_json(client,monkeypatch):
+    import builtins
+    original=builtins.__import__
+    content=xlsx()
+    def without_excel(name,*args,**kwargs):
+        if name=='openpyxl':raise ModuleNotFoundError('openpyxl')
+        return original(name,*args,**kwargs)
+    monkeypatch.setattr(builtins,'__import__',without_excel)
+    response=roster(client,content)
+    assert response.status_code==503
+    assert '엑셀 처리 모듈' in response.json()['detail']

@@ -22,7 +22,10 @@ def parse_roster(content, year):
                 raise ValueError('매크로가 없는 XLSX 파일이 필요합니다.')
     except (BadZipFile, OSError):
         raise ValueError('정상적인 XLSX 파일이 아닙니다.') from None
-    from openpyxl import load_workbook
+    try:
+        from openpyxl import load_workbook
+    except ImportError:
+        raise RuntimeError('서버의 엑셀 처리 모듈 설치가 누락되었습니다. 최신 배포를 확인해주세요.') from None
     book = None
     try:
         book = load_workbook(BytesIO(content), read_only=True, data_only=True, keep_links=False)

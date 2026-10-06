@@ -1,4 +1,11 @@
 const normalized=value=>String(value||'').normalize('NFKC').toLocaleLowerCase('ko-KR');
+export async function readApiResponse(response){
+ let data;
+ try{data=JSON.parse(await response.text());}
+ catch{throw Error(`서버 응답 오류 (HTTP ${response.status}). 잠시 후 다시 시도해주세요. 계속되면 이 오류 번호를 알려주세요.`);}
+ if(!response.ok)throw Error(typeof data?.detail==='string'?data.detail:`요청 실패 (HTTP ${response.status}). 입력 내용과 로그인을 확인해주세요.`);
+ return data;
+}
 export function hostOf(url){try{return new URL(url).hostname.toLowerCase().replace(/^www\./,'');}catch{return '';}}
 export function filterEvents(events,filters,now=Date.now()){
  const periods={'5m':300000,'15m':900000,'1h':3600000,'24h':86400000};

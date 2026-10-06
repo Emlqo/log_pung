@@ -1,4 +1,4 @@
-import {hostOf,filterStatuses,studentLabel,sortStudents} from './student-dashboard-filters.js';
+import {hostOf,filterStatuses,studentLabel,sortStudents,readApiResponse} from './student-dashboard-filters.js';
 const el=id=>document.getElementById(id);
 let snapshot=null;let loading=false;let classSnapshot=null;let classesLoading=false;let loadedFilters=null;let loadedParams=null;
 const filters=()=>Object.fromEntries(['email','range','site','kind','sort','query'].map(id=>[id,el(id).value]));
@@ -47,7 +47,7 @@ el('directory-upload').addEventListener('submit',async event=>{
  try{
   if(file.size>2*1024*1024)throw Error('CSV는 2MB 이하만 등록할 수 있습니다.');
   const response=await fetch('/api/teacher/directory',{method:'POST',headers:{'Content-Type':'text/csv'},body:file});
-  const result=await response.json();if(!response.ok)throw Error(result.detail||'HTTP '+response.status);
+  const result=await readApiResponse(response);if(!response.ok)throw Error(result.detail||'HTTP '+response.status);
   el('directory-message').textContent=`명단 ${result.matched_directory_entries}명 등록 완료. 실제 연결·활동 기록이 있는 이메일에만 이름을 표시합니다.`;
   el('directory-file').value='';await refreshClasses();el('message').textContent='이름 연결 완료 · 조회를 누르면 기록에 반영됩니다.';
  }catch(error){el('directory-message').textContent='명단 등록 실패: '+String(error);}
@@ -61,7 +61,7 @@ el('alias-form').addEventListener('submit',async event=>{
  const buttons=[el('alias-save'),el('alias-cancel')];buttons.forEach(button=>button.disabled=true);el('alias-error').textContent='';
  try{
   const response=await fetch('/api/teacher/alias',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,alias})});
-  const result=await response.json();if(!response.ok)throw Error(typeof result.detail==='string'?result.detail:'별칭을 저장할 수 없습니다. 입력 내용과 로그인을 확인해주세요.');
+  const result=await readApiResponse(response);if(!response.ok)throw Error(typeof result.detail==='string'?result.detail:'별칭을 저장할 수 없습니다. 입력 내용과 로그인을 확인해주세요.');
   if(snapshot){for(const row of [...snapshot.statuses,...snapshot.events])if(row.email===email)row.alias=result.alias;studentChoices();render();}
   if(classSnapshot){for(const row of classSnapshot.students)if(row.email===email)row.alias=result.alias;studentChoices();renderClasses();}
   el('alias-dialog').close();
@@ -100,7 +100,7 @@ async function refreshClasses(){
  if(classesLoading)return;classesLoading=true;el('classes-refresh').disabled=true;el('class-year').disabled=true;
  try{
   const year=Number(el('class-year').value);if(!Number.isInteger(year)||year<2020||year>2100)throw Error('학년도를 확인해주세요.');
-  const response=await fetch('/api/teacher/classes?year='+year,{cache:'no-store'});const data=await response.json();if(!response.ok)throw Error(typeof data.detail==='string'?data.detail:'HTTP '+response.status);
+  const response=await fetch('/api/teacher/classes?year='+year,{cache:'no-store'});const data=await readApiResponse(response);if(!response.ok)throw Error(typeof data.detail==='string'?data.detail:'HTTP '+response.status);
   classSnapshot=data;const chosen=el('class-filter').value;
   el('class-filter').replaceChildren(new Option('전체 반','all'),new Option('! 확인 필요','unassigned'),...data.classes.map(c=>new Option(`${c.grade}학년 ${c.classroom}반`,classKey(c))));
   el('class-filter').value=[...el('class-filter').options].some(o=>o.value===chosen)?chosen:'all';
@@ -118,7 +118,7 @@ el('roster-upload').addEventListener('submit',async event=>{
  try{
   if(file.size>2*1024*1024)throw Error('XLSX는 2MB 이하만 올릴 수 있습니다.');
   const response=await fetch('/api/teacher/roster?year='+Number(el('class-year').value),{method:'POST',headers:{'Content-Type':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'},body:file});
-  const result=await response.json();if(!response.ok)throw Error(typeof result.detail==='string'?result.detail:'업로드 내용을 확인해주세요.');
+  const result=await readApiResponse(response);if(!response.ok)throw Error(typeof result.detail==='string'?result.detail:'업로드 내용을 확인해주세요.');
   el('roster-file').value='';await refreshClasses();
  }catch(error){el('classes-message').textContent='명렬표 연결 실패: '+String(error);}
  finally{el('roster-save').disabled=false;}
@@ -133,7 +133,7 @@ async function saveAssignment(reset){
  const data={email:el('class-form').dataset.email,year:Number(el('class-form').dataset.year),reset};
  if(!reset)Object.assign(data,{grade:Number(el('assign-grade').value),classroom:Number(el('assign-room').value),number:el('assign-number').value===''?null:Number(el('assign-number').value)});
  try{
-  const response=await fetch('/api/teacher/class-assignment',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});const result=await response.json();
+  const response=await fetch('/api/teacher/class-assignment',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});const result=await readApiResponse(response);
   if(!response.ok)throw Error(typeof result.detail==='string'?result.detail:'학년·반·번호 입력을 확인해주세요.');
   el('class-dialog').close();await refreshClasses();
  }catch(error){el('class-error').textContent=String(error);}
@@ -152,7 +152,7 @@ el('date-start').value=koreanDay(Date.now()-6*86400000);el('date-end').value=kor
 el('storage-refresh').addEventListener('click',async()=>{
  const button=el('storage-refresh');button.disabled=true;
  try{
-  const response=await fetch('/api/teacher/storage',{cache:'no-store'});const data=await response.json();if(!response.ok)throw Error(typeof data.detail==='string'?data.detail:'HTTP '+response.status);
+  const response=await fetch('/api/teacher/storage',{cache:'no-store'});const data=await readApiResponse(response);if(!response.ok)throw Error(typeof data.detail==='string'?data.detail:'HTTP '+response.status);
   const mb=bytes=>(bytes/1000000).toLocaleString('ko-KR',{maximumFractionDigits:1})+' MB';
   const dateText=value=>value?new Date(value).toLocaleString('ko-KR',{timeZone:'Asia/Seoul'}):'없음';
   const info=el('storage-info');info.replaceChildren();

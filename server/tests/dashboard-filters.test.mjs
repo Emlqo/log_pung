@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {filterEvents,filterStatuses,hostOf,studentLabel,sortStudents} from '../student-dashboard-filters.js';
+import {filterEvents,filterStatuses,hostOf,studentLabel,sortStudents,readApiResponse} from '../student-dashboard-filters.js';
 const now=new Date(2026,9,4,14,30).getTime();
 const events=[
  {email:'a@goedu.kr',at:now-60000,url:'https://www.google.com/search',search:'정보 수업'},
@@ -70,4 +70,11 @@ test('student choices use original Korean name order, preserving aliases and ema
  const rows=[{display_name:'다학생',email:'a@goedu.kr',alias:'가별칭'},{display_name:'가학생',email:'z@goedu.kr'},{display_name:'가학생',email:'b@goedu.kr'},{email:'empty@goedu.kr'}];
  assert.deepEqual(sortStudents(rows).map(r=>r.email),['b@goedu.kr','z@goedu.kr','a@goedu.kr','empty@goedu.kr']);
  assert.equal(rows[0].display_name,'다학생');
+});
+
+test('plain server errors show HTTP status instead of JSON parser exceptions',async()=>{
+ await assert.rejects(readApiResponse(new Response('Internal Server Error',{status:500})),/HTTP 500/);
+ await assert.rejects(readApiResponse(new Response('<html>timeout</html>',{status:504})),/HTTP 504/);
+ await assert.rejects(readApiResponse(new Response(JSON.stringify({detail:'양식 오류'}),{status:422})),/양식 오류/);
+ assert.deepEqual(await readApiResponse(new Response('{"entries":332}')),{entries:332});
 });

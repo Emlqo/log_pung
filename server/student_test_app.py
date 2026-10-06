@@ -439,6 +439,7 @@ def create_student_app(cfg=None):
         ready();check_year(year)
         try:rows=parse_roster(await request.body(),year)
         except ValueError as error:raise HTTPException(422,str(error)) from None
+        except RuntimeError as error:raise HTTPException(503,str(error)) from None
         try:
             with Session(engine) as db:
                 grades={r['grade'] for r in rows}
