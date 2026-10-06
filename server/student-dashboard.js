@@ -1,10 +1,9 @@
-import {hostOf,filterEvents,filterStatuses,studentLabel,sortStudents} from './student-dashboard-filters.js';
+import {hostOf,filterStatuses,studentLabel,sortStudents} from './student-dashboard-filters.js';
 const el=id=>document.getElementById(id);
-let snapshot=null;let loading=false;let classSnapshot=null;let classesLoading=false;
+let snapshot=null;let loading=false;let classSnapshot=null;let classesLoading=false;let loadedFilters=null;let loadedParams=null;
 const filters=()=>Object.fromEntries(['email','range','site','kind','sort','query'].map(id=>[id,el(id).value]));
 function text(tag,value,className){const node=document.createElement(tag);node.textContent=value;if(className)node.className=className;return node;}
-function choices(id,values,label,labelFor=v=>v){const select=el(id),chosen=select.value;const options=[...new Set(values.filter(Boolean))].sort();if(chosen&&!options.includes(chosen))options.push(chosen);select.replaceChildren(new Option(label,''),...options.map(v=>new Option(labelFor(v),v)));select.value=chosen;}
-function emailButton(person){const email=person.email;const button=text('button',studentLabel(person),'email-button');button.type='button';button.addEventListener('click',()=>{el('email').value=email;render();});return button;}
+function emailButton(person){const email=person.email;const button=text('button',studentLabel(person),'email-button');button.type='button';button.addEventListener('click',()=>{el('email').value=email;el('result-info').textContent='학생을 선택했습니다. 조회를 눌러 기록을 확인하세요.';});return button;}
 function studentCell(person){
  const wrapper=document.createElement('div');wrapper.append(emailButton(person));
  const edit=text('button','별칭 수정','alias-edit');edit.type='button';edit.setAttribute('aria-label',studentLabel(person)+' 별칭 수정');
@@ -18,7 +17,7 @@ function row(values){const tr=document.createElement('tr');for(const value of va
 function emptyTable(id,columns,message){const tr=document.createElement('tr'),td=text('td',message,'empty');td.colSpan=columns;tr.append(td);el(id).append(tr);}
 function render(){
  if(!snapshot)return;
- const selected=filters(),events=filterEvents(snapshot.events,selected),statuses=filterStatuses(snapshot.statuses,selected.email);
+ const selected=loadedFilters||filters(),events=snapshot.events,statuses=filterStatuses(snapshot.statuses,selected.email);
  el('events').replaceChildren();el('statuses').replaceChildren();
  for(const e of events){const address=document.createElement('div');address.append(text('strong',hostOf(e.url)||'사이트 확인 불가'),text('span',e.url,'url-detail'));el('events').append(row([studentCell(e),new Date(e.at).toLocaleString('ko-KR'),address,text('span',e.search||'—',e.search?'search-term':'muted')]));}
  if(!events.length)emptyTable('events',4,'조건에 맞는 기록이 없습니다. 필터를 바꾸거나 초기화해주세요.');
@@ -27,19 +26,19 @@ function render(){
  const allEmails=new Set([...snapshot.statuses,...snapshot.events].map(x=>x.email));
  el('student-count').textContent=selected.email?(allEmails.has(selected.email)?'1':'0'):String(allEmails.size);
  el('connected-count').textContent=String(statuses.filter(s=>!s.delayed).length);
- el('record-count').textContent=String(events.length);el('search-count').textContent=String(events.filter(e=>e.search).length);
+ el('record-count').textContent=String(snapshot.total);el('search-count').textContent=String(events.filter(e=>e.search).length);
  el('status-count').textContent=`${statuses.length}명`;
- el('result-info').textContent=`불러온 ${snapshot.events.length}건 중 ${events.length}건 표시 · 마지막 갱신 ${new Date(snapshot.updated).toLocaleTimeString('ko-KR')}`;
+ el('result-info').textContent=`검색 결과 ${snapshot.total}건 · 현재 ${events.length}건 표시 · 마지막 조회 ${new Date(snapshot.updated).toLocaleTimeString('ko-KR')}`;
 }
-async function refresh(){
+async function refresh(page=1){
  if(loading)return;loading=true;
- try{const r=await fetch('/api/teacher/view',{cache:'no-store'});if(!r.ok)throw Error('HTTP '+r.status);const data=await r.json();snapshot={...data,updated:Date.now()};studentChoices();choices('site',data.events.map(x=>hostOf(x.url)),'전체 사이트');render();el('message').textContent=data.active?'OFF를 누를 때까지 수집합니다.':'학생 확장은 최대 5분 뒤 ON을 확인합니다.';el('collection-state').textContent=data.active?'수집 ON':'수집 OFF';el('collection-state').className=data.active?'badge connected':'badge';}
+ try{const f=page===1?filters():loadedFilters;const params=page===1?new URLSearchParams({period:f.range,email:f.email,query:f.query,site:f.site.trim(),kind:f.kind,sort:f.sort}):new URLSearchParams(loadedParams);if(page===1&&f.range==='custom'){params.set('start',el('date-start').value);params.set('end',el('date-end').value);}params.set('page',String(page));if(page!==1)params.set('until',String(snapshot.until));const r=await fetch('/api/teacher/view?'+params,{cache:'no-store'});if(!r.ok){const err=await r.json();throw Error(typeof err.detail==='string'?err.detail:'조회 조건을 확인해주세요.');}const data=await r.json();snapshot={...data,updated:Date.now()};loadedFilters={...f};loadedParams=params.toString();studentChoices();render();el('page-prev').disabled=page<=1;el('page-next').disabled=page*100>=data.total;el('page-info').textContent=`${page} / ${Math.max(1,Math.ceil(data.total/100))} 페이지`;el('message').textContent=data.active?'OFF를 누를 때까지 수집합니다.':'학생 확장은 최대 5분 뒤 ON을 확인합니다.';el('collection-state').textContent=data.active?'수집 ON':'수집 OFF';el('collection-state').className=data.active?'badge connected':'badge';}
  catch(e){el('message').textContent='조회 실패: '+String(e)+' · 기존 표는 마지막 성공 시점의 데이터입니다.';el('collection-state').textContent='연결 확인 필요';el('collection-state').className='badge warning';}
  finally{loading=false;}
 }
 for(const action of ['start','stop'])el(action).addEventListener('click',async()=>{const buttons=[el('start'),el('stop')];buttons.forEach(b=>b.disabled=true);try{const r=await fetch('/api/teacher/window/'+action,{method:'POST'});if(!r.ok){const d=await r.json();throw Error(d.detail||'HTTP '+r.status);}const active=action==='start';el('collection-state').textContent=active?'수집 ON':'수집 OFF';el('collection-state').className=active?'badge connected':'badge';el('message').textContent=active?'수집을 시작했습니다. 기록은 조회 버튼으로 확인하세요.':'수집을 중지했습니다.';}catch(e){el('message').textContent='조작 실패: '+String(e);}finally{buttons.forEach(b=>b.disabled=false);}});
-el('filters').addEventListener('submit',e=>{e.preventDefault();void refresh();});el('filters').addEventListener('input',render);el('filters').addEventListener('change',render);
-el('reset').addEventListener('click',()=>{el('filters').reset();render();});
+el('filters').addEventListener('submit',e=>{e.preventDefault();void refresh();});el('filters').addEventListener('input',()=>{el('result-info').textContent='조건이 변경되었습니다. 조회를 눌러 적용하세요. 기존 표는 이전 조회 결과입니다.';});
+el('reset').addEventListener('click',()=>{el('filters').reset();el('result-info').textContent='조건을 초기화했습니다. 조회를 눌러 적용하세요.';});
 el('refresh').addEventListener('click',()=>{showTab('records');void refresh();});
 
 el('directory-upload').addEventListener('submit',async event=>{
@@ -74,7 +73,7 @@ function showTab(name){
  for(const tab of ['classes','records']){const active=tab===name;el(tab+'-panel').hidden=!active;el('tab-'+tab).classList.toggle('primary',active);el('tab-'+tab).setAttribute('aria-pressed',String(active));}
 }
 for(const tab of ['classes','records'])el('tab-'+tab).addEventListener('click',()=>showTab(tab));
-function openStudent(person){studentChoices();el('filters').reset();el('email').value=person.email;showTab('records');render();}
+function openStudent(person){studentChoices();el('filters').reset();el('email').value=person.email;showTab('records');el('result-info').textContent='학생을 선택했습니다. 조회를 눌러 기록을 확인하세요. 기존 표는 이전 조회 결과입니다.';}
 function classKey(p){return p.grade==null?'unassigned':`${p.grade}-${p.classroom}`;}
 function renderClasses(){
  if(!classSnapshot)return;
@@ -144,3 +143,25 @@ el('class-form').addEventListener('submit',e=>{e.preventDefault();void saveAssig
 el('class-auto').addEventListener('click',()=>saveAssignment(true));el('class-cancel').addEventListener('click',()=>el('class-dialog').close());
 el('class-dialog').addEventListener('cancel',e=>{if(el('class-save').disabled)e.preventDefault();});
 void refreshClasses();
+
+el('page-prev').addEventListener('click',()=>{if(snapshot&&snapshot.page>1)void refresh(snapshot.page-1);});
+el('page-next').addEventListener('click',()=>{if(snapshot&&snapshot.page*100<snapshot.total)void refresh(snapshot.page+1);});
+for(const id of ['date-start','date-end'])el(id).addEventListener('change',()=>{el('range').value='custom';});
+const koreanDay=stamp=>new Date(stamp+9*3600000).toISOString().slice(0,10);
+el('date-start').value=koreanDay(Date.now()-6*86400000);el('date-end').value=koreanDay(Date.now());
+el('storage-refresh').addEventListener('click',async()=>{
+ const button=el('storage-refresh');button.disabled=true;
+ try{
+  const response=await fetch('/api/teacher/storage',{cache:'no-store'});const data=await response.json();if(!response.ok)throw Error(typeof data.detail==='string'?data.detail:'HTTP '+response.status);
+  const mb=bytes=>(bytes/1000000).toLocaleString('ko-KR',{maximumFractionDigits:1})+' MB';
+  const dateText=value=>value?new Date(value).toLocaleString('ko-KR',{timeZone:'Asia/Seoul'}):'없음';
+  const info=el('storage-info');info.replaceChildren();
+  info.append(text('p',`현재 DB 크기: ${mb(data.used_bytes)} · ${data.size_source}`));
+  if(data.reference_limit_bytes)info.append(text('p',`무료 기준 참고: 1 GB · 단순 비교 ${((data.used_bytes/data.reference_limit_bytes)*100).toFixed(1)}% · 참고 여유 ${mb(Math.max(0,data.reference_limit_bytes-data.used_bytes))} (실제 잔여 한도 아님)`));
+  info.append(text('p',`7일 이내 기록: ${data.event_count.toLocaleString('ko-KR')}건 · 가장 오래된 기록: ${dateText(data.oldest_at)}`));
+  info.append(text('p',`마지막 자동 정리: ${dateText(data.last_cleanup_at)}`));
+  info.append(text('p',data.scheduled_cleanup_configured?'접속 시 자동 정리 + 하루 1회 정기 정리 설정됨':'접속 시 자동 정리 중 · 무접속일 정기 정리는 CRON_SECRET 설정 필요',data.scheduled_cleanup_configured?'muted':'needs-check'));
+  el('storage-message').textContent=`확인 시각: ${dateText(data.checked_at)} · 7일 지난 활동은 조회에서 제외합니다.`;
+ }catch(error){el('storage-message').textContent='용량 조회 실패: '+String(error);}
+ finally{button.disabled=false;}
+});

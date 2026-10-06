@@ -10,14 +10,19 @@ from pathlib import Path
 from uuid import uuid4
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
-from fastapi import FastAPI, Depends, HTTPException, Request
+from fastapi import FastAPI, Depends, HTTPException, Request, Query
+from datetime import date, datetime, timedelta, timezone
+from typing import Literal
 from fastapi.security import HTTPBasic
 from fastapi.responses import HTMLResponse, Response, JSONResponse, FileResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from sqlalchemy import create_engine, Column, String, BigInteger, Integer, Text, select, delete, text, func
+from sqlalchemy import create_engine, Column, String, BigInteger, Integer, Text, select, delete, text, func, cast, JSON, Index, or_
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import DeclarativeBase, Session
 from sqlalchemy.pool import NullPool
+from sqlalchemy.sql.functions import FunctionElement
+from sqlalchemy.ext.compiler import compiles
+from sqlalchemy.schema import CreateIndex
 try:
     from .app import Report, password_matches
     from .local_test_app import Event
@@ -30,6 +35,8 @@ except ImportError:
     from student_roster import parse_roster, match_students, MAX_ROSTER_BYTES
 
 LABEL = '인증되지 않은 계정 정보'
+RETENTION_MS=7*86400000
+KST=timezone(timedelta(hours=9))
 
 @dataclass
 class StudentSettings:
@@ -41,6 +48,11 @@ class StudentSettings:
     enabled: bool = field(default_factory=lambda: os.getenv('STUDENT_TEST_ENABLED','false')=='true')
 
 class StudentBase(DeclarativeBase): pass
+class CleanupState(StudentBase):
+    __tablename__='retention_cleanup'
+    key=Column(String(32),primary_key=True)
+    last_run=Column(BigInteger,nullable=False)
+
 class StudentMigration(StudentBase):
     __tablename__='student_migration'
     school=Column(String(64),primary_key=True)
@@ -106,6 +118,22 @@ class StudentEvent(StudentBase):
     received=Column(BigInteger,nullable=False)
     data=Column(Text,nullable=False)
 
+class EventValue(FunctionElement):
+    type=String()
+    inherit_cache=True
+@compiles(EventValue,'sqlite')
+def sqlite_event_value(element,compiler,**kw):
+    data,key=list(element.clauses)
+    return 'json_extract('+compiler.process(data,**kw)+", '$.' || "+compiler.process(key,**{**kw,'literal_binds':True})+')'
+@compiles(EventValue,'postgresql')
+def postgres_event_value(element,compiler,**kw):
+    data,key=list(element.clauses)
+    return '('+compiler.process(data,**kw)+'::json ->> '+compiler.process(key,**{**kw,'literal_binds':True})+')'
+EVENT_TIME=cast(EventValue(StudentEvent.data,'at'),BigInteger)
+EVENT_URL=EventValue(StudentEvent.data,'url')
+EVENT_SEARCH=EventValue(StudentEvent.data,'search')
+EVENT_INDEXES=[Index('ix_activity_time',EVENT_TIME),Index('ix_activity_email_time',StudentEvent.email,EVENT_TIME),Index('ix_activity_received',StudentEvent.received)]
+
 class EmailReport(Report):
     email: str = Field(max_length=254)
     @field_validator('email')
@@ -164,6 +192,15 @@ def create_student_app(cfg=None):
     def remember(db,email,stamp):
         statement=dialect_insert(KnownStudent).values(school=cfg.school_id,email=email,first_seen=stamp,last_seen=stamp)
         db.execute(statement.on_conflict_do_update(index_elements=['school','email'],set_={'last_seen':statement.excluded.last_seen},where=KnownStudent.last_seen<stamp))
+    def cleanup(db,force=False):
+        stamp=now()
+        if engine.dialect.name=='postgresql' and not db.scalar(text('SELECT pg_try_advisory_xact_lock(724019063)')):return
+        previous=db.get(CleanupState,'activity') if isinstance(db,Session) else None
+        if previous and not force and stamp-previous.last_run<300000:return
+        db.execute(delete(StudentEvent).where(EVENT_TIME<stamp-RETENTION_MS))
+        db.execute(delete(StudentStatus).where(StudentStatus.received<stamp-RETENTION_MS))
+        statement=dialect_insert(CleanupState).values(key='activity',last_run=stamp)
+        db.execute(statement.on_conflict_do_update(index_elements=['key'],set_={'last_run':stamp}))
     def initialize_database():
         # Some serverless adapters do not send ASGI lifespan events.
         nonlocal initialized
@@ -175,6 +212,7 @@ def create_student_app(cfg=None):
                     # Serialize initial DDL across concurrently starting instances.
                     connection.execute(text('SELECT pg_advisory_xact_lock(724019062)'))
                 StudentBase.metadata.create_all(connection)
+                for index in EVENT_INDEXES:connection.execute(CreateIndex(index,if_not_exists=True))
                 # Preserve existing observed identities before the old 24-hour cleanup.
                 migrated=connection.execute(select(StudentMigration.name).where(StudentMigration.school==cfg.school_id,StudentMigration.name=='known-students-v1')).first()
                 if not migrated:
@@ -183,8 +221,7 @@ def create_student_app(cfg=None):
                     for email,received in connection.execute(select(StudentEvent.email,func.max(StudentEvent.received)).join(TestWindow,StudentEvent.window_id==TestWindow.window_id).where(TestWindow.school==cfg.school_id).group_by(StudentEvent.email)):
                         remember(connection,email,received)
                     connection.execute(dialect_insert(StudentMigration).values(school=cfg.school_id,name='known-students-v1').on_conflict_do_nothing())
-                connection.execute(delete(StudentEvent).where(StudentEvent.received<now()-86400000))
-                connection.execute(delete(StudentStatus).where(StudentStatus.received<now()-86400000))
+                cleanup(connection,force=True)
             initialized=True
     @asynccontextmanager
     async def lifespan(_app):
@@ -201,7 +238,9 @@ def create_student_app(cfg=None):
     def ready():
         if not engine or not cfg.enabled or not re.fullmatch(r'[A-Za-z0-9_-]{1,64}',cfg.school_id) or cfg.device_policy not in ('policy','allowlist'):
             raise HTTPException(503,'서버 DB·학교 식별값·시험 활성화 설정 필요')
-        try:initialize_database()
+        try:
+            initialize_database()
+            with Session(engine) as db:cleanup(db);db.commit()
         except SQLAlchemyError:raise HTTPException(503,'데이터베이스 연결·초기화 확인 필요') from None
     def target(report):
         ready()
@@ -261,7 +300,7 @@ def create_student_app(cfg=None):
             # Lock the durable control state against concurrent OFF and uploads.
             w=db.scalar(select(TestWindow).where(TestWindow.school==cfg.school_id).with_for_update())
             if not window_active(w) or w.window_id!=report.window_id:raise HTTPException(403,'수집 시험 시간 아님')
-            if any(e.at<w.starts or (w.ends!=0 and e.at>=w.ends) or e.at>now()+5000 for e in report.events):raise HTTPException(422,'시험 시간 밖 이벤트')
+            if any(e.at<now()-RETENTION_MS or e.at<w.starts or (w.ends!=0 and e.at>=w.ends) or e.at>now()+5000 for e in report.events):raise HTTPException(422,'시험 시간 밖 이벤트')
             budget_key=hashlib.sha256((report.email+w.window_id).encode()).hexdigest()
             budget=db.get(WindowBudget,budget_key) or WindowBudget(key=budget_key,count=0)
             accepted=[]
@@ -275,7 +314,7 @@ def create_student_app(cfg=None):
                 accepted.append(event.id)
             db.add(budget)
             remember(db,report.email,now())
-            db.execute(delete(StudentEvent).where(StudentEvent.received<now()-86400000));db.commit()
+            db.commit()
         return {'accepted_ids':accepted,'student_authenticated':False}
     @app.post('/api/teacher/window/start')
     def start(_teacher=Depends(teacher)):
@@ -330,11 +369,32 @@ def create_student_app(cfg=None):
         except SQLAlchemyError:raise HTTPException(503,'별칭 저장 실패 · 잠시 후 다시 시도해주세요.') from None
         return {'email':update.email,'alias':update.alias}
     @app.get('/api/teacher/view')
-    def view(_teacher=Depends(teacher)):
+    def view(_teacher=Depends(teacher),period:Literal['5m','15m','1h','24h','today','7d','custom']='24h',start:date|None=None,end:date|None=None,email:str=Query('',max_length=254),query:str=Query('',max_length=200),site:str=Query('',max_length=253),kind:Literal['','search','visit']='',sort:Literal['newest','oldest']='newest',page:int=Query(1,ge=1,le=10000),until:int|None=None):
         ready()
+        stamp=now();upper=min(until if until is not None else stamp+5000,stamp+5000)
+        lower=stamp-{'5m':300000,'15m':900000,'1h':3600000,'24h':86400000,'7d':RETENTION_MS}.get(period,RETENTION_MS)
+        if period=='today':lower=int(datetime.fromtimestamp(stamp/1000,KST).replace(hour=0,minute=0,second=0,microsecond=0).timestamp()*1000)
+        if period=='custom':
+            if not start or not end or start>end or start.year<2020 or end.year>2100:raise HTTPException(422,'시작일과 종료일을 확인해주세요.')
+            lower=int(datetime.combine(start,datetime.min.time(),KST).timestamp()*1000)
+            upper=min(upper,int(datetime.combine(end+timedelta(days=1),datetime.min.time(),KST).timestamp()*1000)-1)
+        lower=max(lower,stamp-RETENTION_MS)
+        conditions=[EVENT_TIME>=lower,EVENT_TIME<=upper]
+        if email:conditions.append(StudentEvent.email==email.strip().lower())
+        if kind=='search':conditions.append(func.coalesce(EVENT_SEARCH,'')!='')
+        if kind=='visit':conditions.append(func.coalesce(EVENT_SEARCH,'')=='')
+        if site:
+            if not re.fullmatch(r'[A-Za-z0-9.-]+',site):raise HTTPException(422,'사이트 도메인을 확인해주세요.')
+            conditions.append(or_(*[EVENT_URL.like(prefix+site.lower()+'/%') for prefix in ('https://','http://','https://www.','http://www.')]))
+        if query.strip():
+            term=query.strip()
+            matched=select(StudentDirectory.email).where(StudentDirectory.school==cfg.school_id,StudentDirectory.display_name.contains(term,autoescape=True)).union(select(StudentAlias.email).where(StudentAlias.school==cfg.school_id,StudentAlias.alias.contains(term,autoescape=True)))
+            conditions.append(or_(StudentEvent.email.icontains(term,autoescape=True),EVENT_URL.icontains(term,autoescape=True),EVENT_SEARCH.icontains(term,autoescape=True),StudentEvent.email.in_(matched)))
         with Session(engine) as db:
-            statuses=[{'email':s.email,'received_at':s.received,'delayed':now()-s.received>900000,**json.loads(s.data)} for s in db.scalars(select(StudentStatus).where(StudentStatus.received>=now()-86400000).order_by(StudentStatus.received.desc()))]
-            records=[{'email':e.email,'received_at':e.received,**json.loads(e.data),'auth_state':LABEL} for e in db.scalars(select(StudentEvent).where(StudentEvent.received>=now()-86400000).order_by(StudentEvent.received.desc()).limit(600))]
+            statuses=[{'email':s.email,'received_at':s.received,'delayed':now()-s.received>900000,**json.loads(s.data)} for s in db.scalars(select(StudentStatus).where(StudentStatus.received>=now()-RETENTION_MS).order_by(StudentStatus.received.desc()))]
+            total=db.scalar(select(func.count()).select_from(StudentEvent).where(*conditions))
+            order=[EVENT_TIME.desc(),StudentEvent.key.desc()] if sort=='newest' else [EVENT_TIME.asc(),StudentEvent.key.asc()]
+            records=[{'email':e.email,'received_at':e.received,**json.loads(e.data),'auth_state':LABEL} for e in db.scalars(select(StudentEvent).where(*conditions).order_by(*order).offset((page-1)*100).limit(100))]
             # Only return names for observed rows, never the entire directory.
             observed=list({row['email'] for row in statuses+records})
             names={};aliases={}
@@ -345,7 +405,33 @@ def create_student_app(cfg=None):
                 row['display_name']=names.get(row['email'],'')
                 row['alias']=aliases.get(row['email'],'')
             w=db.get(TestWindow,cfg.school_id)
-            return {'statuses':statuses,'events':records,'active':window_active(w),'ends_at':(w.ends or None) if w else None,'student_authenticated':False}
+            return {'server_filtered':True,'page':page,'page_size':100,'total':total,'until':upper,'retention_days':7,'statuses':statuses,'events':records,'active':window_active(w),'ends_at':(w.ends or None) if w else None,'student_authenticated':False}
+    @app.get('/api/maintenance/retention')
+    def retention(request:Request):
+        secret=os.getenv('CRON_SECRET','')
+        if not secret:raise HTTPException(503,'정기 삭제 인증 설정 필요')
+        supplied=request.headers.get('authorization','')
+        if not hmac.compare_digest(supplied.encode(),('Bearer '+secret).encode()):raise HTTPException(401,'인증 필요')
+        ready()
+        return Response(status_code=204)
+    @app.get('/api/teacher/storage')
+    def storage(_teacher=Depends(teacher)):
+        ready()
+        try:
+            with Session(engine) as db:
+                if engine.dialect.name=='postgresql':
+                    used=int(db.scalar(text('SELECT pg_database_size(current_database())')))
+                    source='PostgreSQL 실제 DB 크기 (인덱스·빈 공간 포함)'
+                else:
+                    used=int(db.scalar(text('PRAGMA page_count')))*int(db.scalar(text('PRAGMA page_size')))
+                    source='로컬 SQLite 파일 크기'
+                count,oldest,newest=db.execute(select(func.count(),func.min(EVENT_TIME),func.max(EVENT_TIME)).select_from(StudentEvent).where(EVENT_TIME>=now()-RETENTION_MS)).one()
+                last=db.get(CleanupState,'activity')
+                return {'used_bytes':used,'size_source':source,'reference_limit_bytes':1000000000 if engine.dialect.name=='postgresql' else None,
+                        'reference_label':'Neon Free 공개 한도 참고 (2026-10-02)','account_plan_verified':False,
+                        'event_count':count,'oldest_at':oldest,'newest_at':newest,'retention_days':7,'last_cleanup_at':last.last_run if last else None,
+                        'scheduled_cleanup_configured':bool(os.getenv('CRON_SECRET','')),'checked_at':now()}
+        except SQLAlchemyError:raise HTTPException(503,'DB 용량 조회 실패 · 연결 또는 조회 권한을 확인해주세요.') from None
     def check_year(year):
         if not 2020<=year<=2100:raise HTTPException(422,'학년도는 2020~2100 사이여야 합니다.')
     @app.post('/api/teacher/roster')

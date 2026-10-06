@@ -74,7 +74,7 @@ def test_optional_number_manual_survives_upload_alias_directory_and_restart(clie
 def test_retained_identity_after_activity_retention(client,config,monkeypatch):
     import student_test_app as module
     directory(client);roster(client);register(client)
-    future=module.now()+2*86400000;monkeypatch.setattr(module,'now',lambda:future)
+    future=module.now()+8*86400000;monkeypatch.setattr(module,'now',lambda:future)
     with TestClient(create_student_app(config)) as other:
         assert other.get('/api/teacher/view',auth=AUTH).json()['statuses']==[]
         assert students(other)[0]['email']=='a@goedu.kr'

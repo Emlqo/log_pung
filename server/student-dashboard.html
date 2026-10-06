@@ -12,23 +12,24 @@
 <p id="classes-message" role="status"></p><div id="class-groups"></div>
 </section>
 <div id="records-panel" hidden>
-<section class="summary" aria-label="조회 요약"><div><span>조회된 학생</span><strong id="student-count">—</strong></div><div><span>최근 연결 · 15분 이내</span><strong id="connected-count">—</strong></div><div><span>필터에 맞는 기록</span><strong id="record-count">—</strong></div><div><span>필터에 맞는 검색</span><strong id="search-count">—</strong></div></section>
+<section class="summary" aria-label="조회 요약"><div><span>조회된 학생</span><strong id="student-count">—</strong></div><div><span>최근 연결 · 15분 이내</span><strong id="connected-count">—</strong></div><div><span>검색 결과 전체</span><strong id="record-count">—</strong></div><div><span>현재 페이지 검색</span><strong id="search-count">—</strong></div></section>
 <section class="panel"><div class="section-heading"><h2>방문·검색 기록</h2><button id="reset" class="text-button">필터 초기화</button></div>
 <form id="filters" class="filters" autocomplete="off">
 <label>학생 이름 · 이메일<select id="email"><option value="">전체 학생</option></select></label>
-<label>시간<select id="range"><option value="24h">최근 24시간</option><option value="5m">최근 5분</option><option value="15m">최근 15분</option><option value="1h">최근 1시간</option><option value="today">오늘</option></select></label>
-<label>사이트<select id="site"><option value="">전체 사이트</option></select></label>
+<label>시간<select id="range"><option value="7d">최근 7일</option><option value="custom">날짜 지정</option><option value="24h">최근 24시간</option><option value="5m">최근 5분</option><option value="15m">최근 15분</option><option value="1h">최근 1시간</option><option value="today">오늘</option></select></label>
+<label>시작일 (한국 시간)<input id="date-start" type="date"></label><label>종료일 (한국 시간)<input id="date-end" type="date"></label><label>사이트<input id="site" placeholder="예: google.com"></label>
 <label>활동<select id="kind"><option value="">방문 + 검색</option><option value="search">검색어 있음</option><option value="visit">검색어 없는 방문</option></select></label>
 <label>정렬<select id="sort"><option value="newest">최신순</option><option value="oldest">오래된순</option></select></label>
 <label class="keyword">내용 찾기<input id="query" type="search" placeholder="이름, 별칭, 이메일, 검색어, 사이트 주소로 찾기"></label>
 <button type="submit" class="primary">조회</button>
 </form>
-<p id="result-info" class="muted" role="status">조회 버튼을 눌러 기록을 불러오세요. 자동 새로고침은 하지 않습니다.</p><p class="muted">최근 24시간 중 불러온 최신 600건 안에서 필터링합니다. 필터는 수집 대상이나 ON/OFF에 영향을 주지 않습니다.</p>
-<div class="scroll"><table><thead><tr><th>학생 · 이메일</th><th>시각</th><th>사이트 / 방문 URL</th><th>검색어</th></tr></thead><tbody id="events"></tbody></table></div>
+<p id="result-info" class="muted" role="status">조회 버튼을 눌러 기록을 불러오세요. 자동 새로고침은 하지 않습니다.</p><p class="muted">최근 7일의 기록을 서버에서 검색합니다. 날짜는 한국 시간 기준이며 100건씩 표시합니다. 필터는 수집 대상이나 ON/OFF에 영향을 주지 않습니다.</p>
+<div class="actions"><button id="page-prev" disabled>이전</button><span id="page-info"></span><button id="page-next" disabled>다음</button></div><div class="scroll"><table><thead><tr><th>학생 · 이메일</th><th>시각</th><th>사이트 / 방문 URL</th><th>검색어</th></tr></thead><tbody id="events"></tbody></table></div>
 </section>
 <details class="panel" open><summary>학생 연결 상태 <span id="status-count" class="muted"></span></summary><p class="muted">학생 이메일을 클릭하면 해당 학생의 기록으로 필터링됩니다. 연결 지연은 기기 미사용을 의미하지 않습니다.</p><div class="scroll"><table><thead><tr><th>학생 · 이메일</th><th>기기 조건</th><th>확장 버전</th><th>마지막 연결</th><th>상태 / 최근 오류</th></tr></thead><tbody id="statuses"></tbody></table></div></details>
 </div>
 <details class="panel"><summary>학생 이름 연결</summary><p>Google 관리자에서 내보낸 CSV를 등록하면 실제 연결·활동 기록의 이메일에 이름을 붙입니다. 명단만 있는 사람은 목록에 추가하지 않습니다.</p><form id="directory-upload"><label>학생 명단 CSV <input id="directory-file" type="file" accept=".csv,text/csv" required></label><button id="directory-save" type="submit">명단 연결</button></form><p id="directory-message" role="status"></p></details>
+<section class="panel"><div class="section-heading"><h2>DB 용량 · 7일 보관</h2><button id="storage-refresh">용량 확인</button></div><p id="storage-message" role="status">용량 확인 버튼을 누르면 DB 사용량과 보관 기록 수를 불러옵니다.</p><div id="storage-info"></div><p class="muted">DB 실제 크기와 Neon 프로젝트의 과금 저장량은 다를 수 있습니다. 삭제한 공간은 재사용되므로 크기가 즉시 줄지 않을 수 있습니다. 무료 한도는 참고값이며 계정의 가입 요금제는 미확인입니다.</p><a href="https://neon.com/blog/neon-free-plan-1-gb-per-project" target="_blank" rel="noopener noreferrer">Neon 무료 요금제 공식 안내</a></section>
 <details class="disclosure"><summary>수집 범위와 표시 정보</summary><p>일반 주소의 쿼리·fragment, 페이지 내용, 이전 방문기록은 수집하지 않습니다. 지원 검색어만 별도로 표시합니다. 이메일과 기기 조건은 확장이 보낸 값이며 서버에서 본인·기기를 인증한 정보가 아닙니다. 정책 설치된 계정 프로필의 기기를 대상으로 교사가 ON/OFF로 제어합니다.</p></details>
 <dialog id="alias-dialog" aria-labelledby="alias-title"><form id="alias-form"><h2 id="alias-title">별칭 수정</h2><p id="alias-person" class="muted"></p><label for="alias-input">별칭</label><input id="alias-input" type="text" maxlength="80" placeholder="예: 2학년 1반 3번" autocomplete="off"><p class="muted">빈칸으로 저장하면 별칭이 지워집니다.</p><p id="alias-error" role="alert"></p><div class="actions"><button id="alias-cancel" type="button">취소</button><button id="alias-save" type="submit" class="primary">저장</button></div></form></dialog>
 <dialog id="class-dialog" aria-labelledby="class-title"><form id="class-form"><h2 id="class-title">반 배정 · 이동</h2><p id="class-person"></p><div class="class-tools"><label>학년 <input id="assign-grade" type="number" min="1" max="12" required></label><label>반 <input id="assign-room" type="number" min="1" max="99" required></label><label>번호 (선택) <input id="assign-number" type="number" min="1" max="999" placeholder="몰라도 됩니다"></label></div><p class="muted">번호를 몰라도 학년과 반만으로 저장할 수 있습니다. 수동 배정은 명단 새로고침과 재업로드 후에도 유지됩니다.</p><p id="class-error" role="alert"></p><div class="actions"><button id="class-cancel" type="button">취소</button><button id="class-auto" type="button">자동 배정으로 되돌리기</button><button id="class-save" class="primary">저장</button></div></form></dialog>
