@@ -37,10 +37,10 @@ async function refresh(){
  catch(e){el('message').textContent='조회 실패: '+String(e)+' · 기존 표는 마지막 성공 시점의 데이터입니다.';el('collection-state').textContent='연결 확인 필요';el('collection-state').className='badge warning';}
  finally{loading=false;}
 }
-for(const action of ['start','stop'])el(action).addEventListener('click',async()=>{const buttons=[el('start'),el('stop')];buttons.forEach(b=>b.disabled=true);try{const r=await fetch('/api/teacher/window/'+action,{method:'POST'});if(!r.ok){const d=await r.json();throw Error(d.detail||'HTTP '+r.status);}await refresh();}catch(e){el('message').textContent='조작 실패: '+String(e);}finally{buttons.forEach(b=>b.disabled=false);}});
-el('filters').addEventListener('submit',e=>e.preventDefault());el('filters').addEventListener('input',render);el('filters').addEventListener('change',render);
+for(const action of ['start','stop'])el(action).addEventListener('click',async()=>{const buttons=[el('start'),el('stop')];buttons.forEach(b=>b.disabled=true);try{const r=await fetch('/api/teacher/window/'+action,{method:'POST'});if(!r.ok){const d=await r.json();throw Error(d.detail||'HTTP '+r.status);}const active=action==='start';el('collection-state').textContent=active?'수집 ON':'수집 OFF';el('collection-state').className=active?'badge connected':'badge';el('message').textContent=active?'수집을 시작했습니다. 기록은 조회 버튼으로 확인하세요.':'수집을 중지했습니다.';}catch(e){el('message').textContent='조작 실패: '+String(e);}finally{buttons.forEach(b=>b.disabled=false);}});
+el('filters').addEventListener('submit',e=>{e.preventDefault();void refresh();});el('filters').addEventListener('input',render);el('filters').addEventListener('change',render);
 el('reset').addEventListener('click',()=>{el('filters').reset();render();});
-el('refresh').addEventListener('click',refresh);void refresh();setInterval(refresh,5000);
+el('refresh').addEventListener('click',()=>{showTab('records');void refresh();});
 
 el('directory-upload').addEventListener('submit',async event=>{
  event.preventDefault();const file=el('directory-file').files[0];if(!file)return;
@@ -50,7 +50,7 @@ el('directory-upload').addEventListener('submit',async event=>{
   const response=await fetch('/api/teacher/directory',{method:'POST',headers:{'Content-Type':'text/csv'},body:file});
   const result=await response.json();if(!response.ok)throw Error(result.detail||'HTTP '+response.status);
   el('directory-message').textContent=`명단 ${result.matched_directory_entries}명 등록 완료. 실제 연결·활동 기록이 있는 이메일에만 이름을 표시합니다.`;
-  el('directory-file').value='';await refreshClasses();await refresh();
+  el('directory-file').value='';await refreshClasses();el('message').textContent='이름 연결 완료 · 조회를 누르면 기록에 반영됩니다.';
  }catch(error){el('directory-message').textContent='명단 등록 실패: '+String(error);}
  finally{button.disabled=false;}
 });
@@ -74,7 +74,7 @@ function showTab(name){
  for(const tab of ['classes','records']){const active=tab===name;el(tab+'-panel').hidden=!active;el('tab-'+tab).classList.toggle('primary',active);el('tab-'+tab).setAttribute('aria-pressed',String(active));}
 }
 for(const tab of ['classes','records'])el('tab-'+tab).addEventListener('click',()=>showTab(tab));
-function openStudent(person){studentChoices();el('filters').reset();el('email').value=person.email;showTab('records');render();void refresh();}
+function openStudent(person){studentChoices();el('filters').reset();el('email').value=person.email;showTab('records');render();}
 function classKey(p){return p.grade==null?'unassigned':`${p.grade}-${p.classroom}`;}
 function renderClasses(){
  if(!classSnapshot)return;

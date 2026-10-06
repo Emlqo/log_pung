@@ -1,8 +1,8 @@
 <!doctype html>
 <html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>수업 활동 모니터링</title><link rel="stylesheet" href="/dashboard.css"></head>
 <body><main class="monitor">
-<header class="heading"><div><p class="eyebrow">CLASSROOM MONITOR</p><h1>수업 활동 모니터링</h1><p>학생별 방문과 검색 활동을 확인하세요.</p></div><span id="collection-state" class="badge">상태 확인 중</span></header>
-<section class="control-bar" aria-label="수집 제어"><div class="actions"><button id="start" class="primary">ON · 수집 시작</button><button id="stop" class="stop">OFF · 수집 중지</button><button id="refresh">새로고침</button></div><p id="message" role="status">서버 연결 확인 중</p></section>
+<header class="heading"><div><p class="eyebrow">CLASSROOM MONITOR</p><h1>수업 활동 모니터링</h1><p>학생별 방문과 검색 활동을 확인하세요.</p></div><span id="collection-state" class="badge">수집 상태 미조회</span></header>
+<section class="control-bar" aria-label="수집 제어"><div class="actions"><button id="start" class="primary">ON · 수집 시작</button><button id="stop" class="stop">OFF · 수집 중지</button><button id="refresh">조회</button></div><p id="message" role="status">조회 버튼을 누르면 최신 기록과 수집 상태를 불러옵니다.</p></section>
 <nav class="view-tabs" aria-label="모니터링 화면"><button id="tab-classes" aria-pressed="true" class="primary">반별 학생</button><button id="tab-records" aria-pressed="false">기록 검색</button></nav>
 <section id="classes-panel" class="panel">
 <div class="section-heading"><h2>반별 학생</h2><button id="classes-refresh">명단 새로고침</button></div>
@@ -21,8 +21,9 @@
 <label>활동<select id="kind"><option value="">방문 + 검색</option><option value="search">검색어 있음</option><option value="visit">검색어 없는 방문</option></select></label>
 <label>정렬<select id="sort"><option value="newest">최신순</option><option value="oldest">오래된순</option></select></label>
 <label class="keyword">내용 찾기<input id="query" type="search" placeholder="이름, 별칭, 이메일, 검색어, 사이트 주소로 찾기"></label>
+<button type="submit" class="primary">조회</button>
 </form>
-<p id="result-info" class="muted" role="status"></p><p class="muted">최근 24시간 중 불러온 최신 600건 안에서 필터링합니다. 필터는 수집 대상이나 ON/OFF에 영향을 주지 않습니다.</p>
+<p id="result-info" class="muted" role="status">조회 버튼을 눌러 기록을 불러오세요. 자동 새로고침은 하지 않습니다.</p><p class="muted">최근 24시간 중 불러온 최신 600건 안에서 필터링합니다. 필터는 수집 대상이나 ON/OFF에 영향을 주지 않습니다.</p>
 <div class="scroll"><table><thead><tr><th>학생 · 이메일</th><th>시각</th><th>사이트 / 방문 URL</th><th>검색어</th></tr></thead><tbody id="events"></tbody></table></div>
 </section>
 <details class="panel" open><summary>학생 연결 상태 <span id="status-count" class="muted"></span></summary><p class="muted">학생 이메일을 클릭하면 해당 학생의 기록으로 필터링됩니다. 연결 지연은 기기 미사용을 의미하지 않습니다.</p><div class="scroll"><table><thead><tr><th>학생 · 이메일</th><th>기기 조건</th><th>확장 버전</th><th>마지막 연결</th><th>상태 / 최근 오류</th></tr></thead><tbody id="statuses"></tbody></table></div></details>
