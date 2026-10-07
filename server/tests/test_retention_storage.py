@@ -13,7 +13,7 @@ def seed(client,ages):
         for age in ages:
             at=stamp-age
             db.add(StudentEvent(key=str(uuid4()),email=BASE['email'],window_id='fixture',received=stamp,
-                data=json.dumps(dict(id=str(uuid4()),at=at,url='https://example.test/path',search='검증',kind='visit'))))
+                data=json.dumps(dict(id=str(uuid4()),at=at,url='https://example.test/path/'+str(uuid4()),search='검증',kind='visit'))))
         db.commit()
 
 def test_seven_day_retention_uses_activity_time_and_keeps_directory(client,monkeypatch):

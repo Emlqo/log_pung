@@ -19,7 +19,7 @@ function render(){
  if(!snapshot)return;
  const selected=loadedFilters||filters(),events=snapshot.events,statuses=filterStatuses(snapshot.statuses,selected.email);
  el('events').replaceChildren();el('statuses').replaceChildren();
- for(const e of events){const address=document.createElement('div');address.append(text('strong',hostOf(e.url)||'사이트 확인 불가'),text('span',e.url,'url-detail'));el('events').append(row([studentCell(e),new Date(e.at).toLocaleString('ko-KR'),address,text('span',e.search||'—',e.search?'search-term':'muted')]));}
+ for(const e of events){const address=document.createElement('div');address.append(text('strong',hostOf(e.url)||'사이트 확인 불가'),text('span',e.url,'url-detail'));el('events').append(row([studentCell(e),text('span',(e.repeat_count>1?new Date(e.first_at).toLocaleString('ko-KR')+' ~ '+new Date(e.at).toLocaleTimeString('ko-KR')+' · '+e.repeat_count+'회':new Date(e.at).toLocaleString('ko-KR')+' · 1회')),address,text('span',e.search||'—',e.search?'search-term':'muted')]));}
  if(!events.length)emptyTable('events',4,'조건에 맞는 기록이 없습니다. 필터를 바꾸거나 초기화해주세요.');
  for(const s of sortStudents(statuses)){const state=document.createElement('div');state.append(text('span',s.delayed?'연결 지연':'최근 연결',s.delayed?'badge warning':'badge connected'));if(s.recent_error&&s.recent_error!=='none')state.append(text('span',s.recent_error,'url-detail'));const device=s.device_state==='confirmed'?(s.device_policy==='policy'?'정책 설치 대상':'승인 ID와 일치'):'기기 확인 필요';el('statuses').append(row([studentCell(s),device,s.extension_version,new Date(s.received_at).toLocaleString('ko-KR'),state]));}
  if(!statuses.length)emptyTable('statuses',5,'표시할 연결 상태가 없습니다.');
@@ -28,7 +28,7 @@ function render(){
  el('connected-count').textContent=String(statuses.filter(s=>!s.delayed).length);
  el('record-count').textContent=String(snapshot.total);el('search-count').textContent=String(events.filter(e=>e.search).length);
  el('status-count').textContent=`${statuses.length}명`;
- el('result-info').textContent=`검색 결과 ${snapshot.total}건 · 현재 ${events.length}건 표시 · 마지막 조회 ${new Date(snapshot.updated).toLocaleTimeString('ko-KR')}`;
+ el('result-info').textContent=`검색 결과 ${snapshot.total}줄 · 방문 ${snapshot.visit_count??snapshot.total}회 · 현재 ${events.length}줄 표시 · 마지막 조회 ${new Date(snapshot.updated).toLocaleTimeString('ko-KR')}`;
 }
 async function refresh(page=1){
  if(loading)return;loading=true;
@@ -158,7 +158,7 @@ el('storage-refresh').addEventListener('click',async()=>{
   const info=el('storage-info');info.replaceChildren();
   info.append(text('p',`현재 DB 크기: ${mb(data.used_bytes)} · ${data.size_source}`));
   if(data.reference_limit_bytes)info.append(text('p',`무료 기준 참고: 1 GB · 단순 비교 ${((data.used_bytes/data.reference_limit_bytes)*100).toFixed(1)}% · 참고 여유 ${mb(Math.max(0,data.reference_limit_bytes-data.used_bytes))} (실제 잔여 한도 아님)`));
-  info.append(text('p',`7일 이내 기록: ${data.event_count.toLocaleString('ko-KR')}건 · 가장 오래된 기록: ${dateText(data.oldest_at)}`));
+  info.append(text('p',`7일 이내 저장 행: ${data.event_count.toLocaleString('ko-KR')}건 · 가장 오래된 기록: ${dateText(data.oldest_at)}`));
   info.append(text('p',`마지막 자동 정리: ${dateText(data.last_cleanup_at)}`));
   info.append(text('p',data.scheduled_cleanup_configured?'접속 시 자동 정리 + 하루 1회 정기 정리 설정됨':'접속 시 자동 정리 중 · 무접속일 정기 정리는 CRON_SECRET 설정 필요',data.scheduled_cleanup_configured?'muted':'needs-check'));
   el('storage-message').textContent=`확인 시각: ${dateText(data.checked_at)} · 7일 지난 활동은 조회에서 제외합니다.`;

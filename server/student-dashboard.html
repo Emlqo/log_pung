@@ -12,7 +12,7 @@
 <p id="classes-message" role="status"></p><div id="class-groups"></div>
 </section>
 <div id="records-panel" hidden>
-<section class="summary" aria-label="조회 요약"><div><span>조회된 학생</span><strong id="student-count">—</strong></div><div><span>최근 연결 · 15분 이내</span><strong id="connected-count">—</strong></div><div><span>검색 결과 전체</span><strong id="record-count">—</strong></div><div><span>현재 페이지 검색</span><strong id="search-count">—</strong></div></section>
+<section class="summary" aria-label="조회 요약"><div><span>조회된 학생</span><strong id="student-count">—</strong></div><div><span>최근 연결 · 15분 이내</span><strong id="connected-count">—</strong></div><div><span>검색 결과 묶음</span><strong id="record-count">—</strong></div><div><span>현재 페이지 검색</span><strong id="search-count">—</strong></div></section>
 <section class="panel"><div class="section-heading"><h2>방문·검색 기록</h2><button id="reset" class="text-button">필터 초기화</button></div>
 <form id="filters" class="filters" autocomplete="off">
 <label>학생 이름 · 이메일<select id="email"><option value="">전체 학생</option></select></label>
@@ -23,7 +23,7 @@
 <label class="keyword">내용 찾기<input id="query" type="search" placeholder="이름, 별칭, 이메일, 검색어, 사이트 주소로 찾기"></label>
 <button type="submit" class="primary">조회</button>
 </form>
-<p id="result-info" class="muted" role="status">조회 버튼을 눌러 기록을 불러오세요. 자동 새로고침은 하지 않습니다.</p><p class="muted">최근 7일의 기록을 서버에서 검색합니다. 날짜는 한국 시간 기준이며 100건씩 표시합니다. 필터는 수집 대상이나 ON/OFF에 영향을 주지 않습니다.</p>
+<p id="result-info" class="muted" role="status">조회 버튼을 눌러 기록을 불러오세요. 자동 새로고침은 하지 않습니다.</p><p class="muted">최근 7일의 기록을 서버에서 검색합니다. 날짜는 한국 시간 기준이며 같은 학생의 URL·검색어가 연속으로 같으면 첫 기록부터 5분 범위에서 묶고, 100줄씩 표시합니다. 다른 활동이 끼거나 날짜가 바뀌면 나눕니다. 필터는 수집 대상이나 ON/OFF에 영향을 주지 않습니다.</p>
 <div class="actions"><button id="page-prev" disabled>이전</button><span id="page-info"></span><button id="page-next" disabled>다음</button></div><div class="scroll"><table><thead><tr><th>학생 · 이메일</th><th>시각</th><th>사이트 / 방문 URL</th><th>검색어</th></tr></thead><tbody id="events"></tbody></table></div>
 </section>
 <details class="panel" open><summary>학생 연결 상태 <span id="status-count" class="muted"></span></summary><p class="muted">학생 이메일을 클릭하면 해당 학생의 기록으로 필터링됩니다. 연결 지연은 기기 미사용을 의미하지 않습니다.</p><div class="scroll"><table><thead><tr><th>학생 · 이메일</th><th>기기 조건</th><th>확장 버전</th><th>마지막 연결</th><th>상태 / 최근 오류</th></tr></thead><tbody id="statuses"></tbody></table></div></details>

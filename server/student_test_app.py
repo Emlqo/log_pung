@@ -16,7 +16,8 @@ from typing import Literal
 from fastapi.security import HTTPBasic
 from fastapi.responses import HTMLResponse, Response, JSONResponse, FileResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from sqlalchemy import create_engine, Column, String, BigInteger, Integer, Text, select, delete, text, func, cast, JSON, Index, or_
+from sqlalchemy import create_engine, Column, String, BigInteger, Integer, Text, LargeBinary, select, delete, update, text, func, cast, JSON, Index, or_
+from urllib.parse import urlsplit
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import DeclarativeBase, Session
 from sqlalchemy.pool import NullPool
@@ -28,11 +29,13 @@ try:
     from .local_test_app import Event
     from .student_directory import parse_directory, MAX_DIRECTORY_BYTES
     from .student_roster import parse_roster, match_students, MAX_ROSTER_BYTES
+    from .activity_groups import GROUP_MS, day, times, stamp as group_stamp, grouped_page
 except ImportError:
     from app import Report, password_matches
     from local_test_app import Event
     from student_directory import parse_directory, MAX_DIRECTORY_BYTES
     from student_roster import parse_roster, match_students, MAX_ROSTER_BYTES
+    from activity_groups import GROUP_MS, day, times, stamp as group_stamp, grouped_page
 
 LABEL = '인증되지 않은 계정 정보'
 RETENTION_MS=7*86400000
@@ -118,6 +121,12 @@ class StudentEvent(StudentBase):
     received=Column(BigInteger,nullable=False)
     data=Column(Text,nullable=False)
 
+class EventReceipt(StudentBase):
+    __tablename__='activity_receipt'
+    key=Column(LargeBinary(32),primary_key=True)
+    digest=Column(LargeBinary(32),nullable=False)
+    at=Column(BigInteger,nullable=False,index=True)
+
 class EventValue(FunctionElement):
     type=String()
     inherit_cache=True
@@ -130,6 +139,8 @@ def postgres_event_value(element,compiler,**kw):
     data,key=list(element.clauses)
     return '('+compiler.process(data,**kw)+'::json ->> '+compiler.process(key,**{**kw,'literal_binds':True})+')'
 EVENT_TIME=cast(EventValue(StudentEvent.data,'at'),BigInteger)
+EVENT_FIRST=func.coalesce(cast(EventValue(StudentEvent.data,'first_at'),BigInteger),EVENT_TIME)
+EVENT_ORDER=func.coalesce(cast(EventValue(StudentEvent.data,'_order'),BigInteger),0)
 EVENT_URL=EventValue(StudentEvent.data,'url')
 EVENT_SEARCH=EventValue(StudentEvent.data,'search')
 EVENT_INDEXES=[Index('ix_activity_time',EVENT_TIME),Index('ix_activity_email_time',StudentEvent.email,EVENT_TIME),Index('ix_activity_received',StudentEvent.received)]
@@ -198,6 +209,12 @@ def create_student_app(cfg=None):
         previous=db.get(CleanupState,'activity') if isinstance(db,Session) else None
         if previous and not force and stamp-previous.last_run<300000:return
         db.execute(delete(StudentEvent).where(EVENT_TIME<stamp-RETENTION_MS))
+        db.execute(delete(EventReceipt).where(EventReceipt.at<stamp-RETENTION_MS))
+        # Trim a run that crosses the retention boundary without extending old visits.
+        for key,raw in db.execute(select(StudentEvent.key,StudentEvent.data).where(EVENT_FIRST<stamp-RETENTION_MS,EVENT_TIME>=stamp-RETENTION_MS)):
+            data=json.loads(raw)
+            remaining=[t for t in times(data) if t>=stamp-RETENTION_MS]
+            if remaining:db.execute(update(StudentEvent).where(StudentEvent.key==key).values(data=json.dumps(group_stamp(data,remaining),ensure_ascii=False,separators=(',',':'))))
         db.execute(delete(StudentStatus).where(StudentStatus.received<stamp-RETENTION_MS))
         statement=dialect_insert(CleanupState).values(key='activity',last_run=stamp)
         db.execute(statement.on_conflict_do_update(index_elements=['key'],set_={'last_run':stamp}))
@@ -306,11 +323,52 @@ def create_student_app(cfg=None):
             accepted=[]
             for event in report.events:
                 key=hashlib.sha256((report.email+w.window_id+event.id).encode()).hexdigest()
-                row=db.get(StudentEvent,key);data=json.dumps(event.model_dump(),ensure_ascii=False,sort_keys=True)
-                if row:
-                    if row.data!=data:raise HTTPException(409,'같은 이벤트 ID의 내용 변경 거부')
+                payload=event.model_dump();canonical=json.dumps(payload,ensure_ascii=False,sort_keys=True)
+                digest=hashlib.sha256(canonical.encode()).digest()
+                receipt=db.get(EventReceipt,bytes.fromhex(key))
+                existing=db.get(StudentEvent,key)
+                if receipt:
+                    if receipt.digest!=digest:raise HTTPException(409,'같은 이벤트 ID의 내용 변경 거부')
+                elif existing:
+                    old=json.loads(existing.data)
+                    original={name:old.get(name) for name in ('id','at','url','search','kind')}
+                    original['at']=old.get('first_at',old['at'])
+                    if original!=payload:raise HTTPException(409,'같은 이벤트 ID의 내용 변경 거부')
                 else:
-                    db.add(StudentEvent(key=key,email=report.email,window_id=w.window_id,received=now(),data=data));budget.count+=1;db.flush()
+                    budget.count+=1
+                    # A delayed different activity can split an already compacted run.
+                    overlaps=list(db.scalars(select(StudentEvent).where(StudentEvent.email==report.email,StudentEvent.window_id==w.window_id,EVENT_FIRST<=event.at,EVENT_TIME>event.at)))
+                    for previous in overlaps:
+                        data=json.loads(previous.data)
+                        if data.get('_times') and (data['url'],data.get('search') or '')!=(event.url,event.search or ''):
+                            left=[t for t in times(data) if t<=event.at];right=[t for t in times(data) if t>event.at]
+                            if left and right:
+                                previous.data=json.dumps(group_stamp(dict(data),left),ensure_ascii=False,separators=(',',':'))
+                                tail=group_stamp(dict(data),right);tail['id']=str(uuid4())
+                                tail_key=hashlib.sha256((previous.key+key+'tail').encode()).hexdigest()
+                                db.add(StudentEvent(key=tail_key,email=report.email,window_id=w.window_id,received=previous.received,data=json.dumps(tail,ensure_ascii=False,separators=(',',':'))))
+                    db.flush()
+                    previous=db.scalar(select(StudentEvent).where(StudentEvent.email==report.email,StudentEvent.window_id==w.window_id).order_by(EVENT_TIME.desc(),EVENT_ORDER.desc(),StudentEvent.key.desc()).limit(1))
+                    data=json.loads(previous.data) if previous else None
+                    merge=bool(data and data.get('_times') and len(data['_times'])<1000 and
+                        (data['url'],data.get('search') or '')==(event.url,event.search or '') and
+                        data['at']<=event.at and event.at-data['first_at']<=GROUP_MS and day(event.at)==day(data['first_at']))
+                    if merge:
+                        # The first event was stored directly; add its compact retry receipt
+                        # only when this row becomes a multi-visit group.
+                        original_key=hashlib.sha256((report.email+w.window_id+data['id']).encode()).digest()
+                        if not data.get('_receipt_seeded') and not db.get(EventReceipt,original_key):
+                            original={name:data.get(name) for name in ('id','at','url','search','kind')};original['at']=data['first_at']
+                            db.add(EventReceipt(key=original_key,digest=hashlib.sha256(json.dumps(original,ensure_ascii=False,sort_keys=True).encode()).digest(),at=data['first_at']))
+                        data['_receipt_seeded']=True
+                        data['_order']=budget.count
+                        previous.data=json.dumps(group_stamp(data,times(data)+[event.at]),ensure_ascii=False,separators=(',',':'))
+                        previous.received=now()
+                        db.add(EventReceipt(key=bytes.fromhex(key),digest=digest,at=event.at))
+                    else:
+                        data=group_stamp({**payload,'_order':budget.count},[event.at])
+                        db.add(StudentEvent(key=key,email=report.email,window_id=w.window_id,received=now(),data=json.dumps(data,ensure_ascii=False,separators=(',',':'))))
+                    db.flush()
                 accepted.append(event.id)
             db.add(budget)
             remember(db,report.email,now())
@@ -379,22 +437,24 @@ def create_student_app(cfg=None):
             lower=int(datetime.combine(start,datetime.min.time(),KST).timestamp()*1000)
             upper=min(upper,int(datetime.combine(end+timedelta(days=1),datetime.min.time(),KST).timestamp()*1000)-1)
         lower=max(lower,stamp-RETENTION_MS)
-        conditions=[EVENT_TIME>=lower,EVENT_TIME<=upper]
+        conditions=[EVENT_TIME>=lower,EVENT_FIRST<=upper]
         if email:conditions.append(StudentEvent.email==email.strip().lower())
-        if kind=='search':conditions.append(func.coalesce(EVENT_SEARCH,'')!='')
-        if kind=='visit':conditions.append(func.coalesce(EVENT_SEARCH,'')=='')
-        if site:
-            if not re.fullmatch(r'[A-Za-z0-9.-]+',site):raise HTTPException(422,'사이트 도메인을 확인해주세요.')
-            conditions.append(or_(*[EVENT_URL.like(prefix+site.lower()+'/%') for prefix in ('https://','http://','https://www.','http://www.')]))
-        if query.strip():
-            term=query.strip()
-            matched=select(StudentDirectory.email).where(StudentDirectory.school==cfg.school_id,StudentDirectory.display_name.contains(term,autoescape=True)).union(select(StudentAlias.email).where(StudentAlias.school==cfg.school_id,StudentAlias.alias.contains(term,autoescape=True)))
-            conditions.append(or_(StudentEvent.email.icontains(term,autoescape=True),EVENT_URL.icontains(term,autoescape=True),EVENT_SEARCH.icontains(term,autoescape=True),StudentEvent.email.in_(matched)))
+        if site and not re.fullmatch(r'[A-Za-z0-9.-]+',site):raise HTTPException(422,'사이트 도메인을 확인해주세요.')
         with Session(engine) as db:
+            directory={r.email:r.display_name for r in db.scalars(select(StudentDirectory).where(StudentDirectory.school==cfg.school_id))}
+            all_aliases={r.email:r.alias for r in db.scalars(select(StudentAlias).where(StudentAlias.school==cfg.school_id))}
+            def matches(row):
+                if kind=='search' and not row.get('search'):return False
+                if kind=='visit' and row.get('search'):return False
+                if site and (urlsplit(row['url']).hostname or '').lower().removeprefix('www.')!=site.lower().removeprefix('www.'):return False
+                fields=[row['email'],row['url'],row.get('search') or '',directory.get(row['email'],''),all_aliases.get(row['email'],'')]
+                return not query.strip() or query.strip().casefold() in ' '.join(fields).casefold()
             statuses=[{'email':s.email,'received_at':s.received,'delayed':now()-s.received>900000,**json.loads(s.data)} for s in db.scalars(select(StudentStatus).where(StudentStatus.received>=now()-RETENTION_MS).order_by(StudentStatus.received.desc()))]
-            total=db.scalar(select(func.count()).select_from(StudentEvent).where(*conditions))
-            order=[EVENT_TIME.desc(),StudentEvent.key.desc()] if sort=='newest' else [EVENT_TIME.asc(),StudentEvent.key.asc()]
-            records=[{'email':e.email,'received_at':e.received,**json.loads(e.data),'auth_state':LABEL} for e in db.scalars(select(StudentEvent).where(*conditions).order_by(*order).offset((page-1)*100).limit(100))]
+            # Stream the time/student range before filtering URLs, so A-B-A never
+            # becomes a single A run just because a search filter hides B.
+            source=db.execute(select(StudentEvent.email,StudentEvent.window_id,StudentEvent.received,StudentEvent.data).where(*conditions).order_by(EVENT_FIRST,EVENT_ORDER,StudentEvent.key).execution_options(yield_per=256))
+            rows=({'email':e.email,'window_id':e.window_id,'received_at':e.received,**json.loads(e.data),'auth_state':LABEL} for e in source)
+            records,total,visit_count=grouped_page(rows,lower,upper,matches,page,sort=='newest')
             # Only return names for observed rows, never the entire directory.
             observed=list({row['email'] for row in statuses+records})
             names={};aliases={}
@@ -405,7 +465,7 @@ def create_student_app(cfg=None):
                 row['display_name']=names.get(row['email'],'')
                 row['alias']=aliases.get(row['email'],'')
             w=db.get(TestWindow,cfg.school_id)
-            return {'server_filtered':True,'page':page,'page_size':100,'total':total,'until':upper,'retention_days':7,'statuses':statuses,'events':records,'active':window_active(w),'ends_at':(w.ends or None) if w else None,'student_authenticated':False}
+            return {'server_filtered':True,'page':page,'page_size':100,'total':total,'visit_count':visit_count,'until':upper,'retention_days':7,'statuses':statuses,'events':records,'active':window_active(w),'ends_at':(w.ends or None) if w else None,'student_authenticated':False}
     @app.get('/api/maintenance/retention')
     def retention(request:Request):
         secret=os.getenv('CRON_SECRET','')
