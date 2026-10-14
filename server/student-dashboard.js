@@ -30,11 +30,18 @@ function render(){
  el('status-count').textContent=`${statuses.length}명`;
  el('result-info').textContent=`검색 결과 ${snapshot.total}줄 · 방문 ${snapshot.visit_count??snapshot.total}회 · 현재 ${events.length}줄 표시 · 마지막 조회 ${new Date(snapshot.updated).toLocaleTimeString('ko-KR')}`;
 }
-async function refresh(page=1){
- if(loading)return;loading=true;
- try{const f=page===1?filters():loadedFilters;const params=page===1?new URLSearchParams({period:f.range,email:f.email,query:f.query,site:f.site.trim(),kind:f.kind,sort:f.sort}):new URLSearchParams(loadedParams);if(page===1&&f.range==='custom'){params.set('start',el('date-start').value);params.set('end',el('date-end').value);}params.set('page',String(page));if(page!==1)params.set('until',String(snapshot.until));const r=await fetch('/api/teacher/view?'+params,{cache:'no-store'});if(!r.ok){const err=await r.json();throw Error(typeof err.detail==='string'?err.detail:'조회 조건을 확인해주세요.');}const data=await r.json();snapshot={...data,updated:Date.now()};loadedFilters={...f};loadedParams=params.toString();studentChoices();render();el('page-prev').disabled=page<=1;el('page-next').disabled=page*100>=data.total;el('page-info').textContent=`${page} / ${Math.max(1,Math.ceil(data.total/100))} 페이지`;el('message').textContent=data.active?'OFF를 누를 때까지 수집합니다.':'학생 확장은 최대 5분 뒤 ON을 확인합니다.';el('collection-state').textContent=data.active?'수집 ON':'수집 OFF';el('collection-state').className=data.active?'badge connected':'badge';}
+function syncPagination(){
+ for(const suffix of ['', '-bottom']){
+  el('page-prev'+suffix).disabled=loading||!snapshot||snapshot.page<=1;
+  el('page-next'+suffix).disabled=loading||!snapshot||snapshot.page*100>=snapshot.total;
+  el('page-info'+suffix).textContent=loading?'불러오는 중…':snapshot?`${snapshot.page} / ${Math.max(1,Math.ceil(snapshot.total/100))} 페이지`:'';
+ }
+}
+async function refresh(page=1,paginating=false){
+ if(loading)return;loading=true;syncPagination();
+ try{const f=paginating?loadedFilters:filters();const params=!paginating?new URLSearchParams({period:f.range,email:f.email,query:f.query,site:f.site.trim(),kind:f.kind,sort:f.sort}):new URLSearchParams(loadedParams);if(!paginating&&f.range==='custom'){params.set('start',el('date-start').value);params.set('end',el('date-end').value);}params.set('page',String(page));if(paginating)params.set('until',String(snapshot.until));const r=await fetch('/api/teacher/view?'+params,{cache:'no-store'});if(!r.ok){const err=await r.json();throw Error(typeof err.detail==='string'?err.detail:'조회 조건을 확인해주세요.');}const data=await r.json();snapshot={...data,updated:Date.now()};loadedFilters={...f};loadedParams=params.toString();studentChoices();render();if(paginating)el('record-pages-top').scrollIntoView({block:'start'});el('message').textContent=data.active?'OFF를 누를 때까지 수집합니다.':'학생 확장은 최대 5분 뒤 ON을 확인합니다.';el('collection-state').textContent=data.active?'수집 ON':'수집 OFF';el('collection-state').className=data.active?'badge connected':'badge';}
  catch(e){el('message').textContent='조회 실패: '+String(e)+' · 기존 표는 마지막 성공 시점의 데이터입니다.';el('collection-state').textContent='연결 확인 필요';el('collection-state').className='badge warning';}
- finally{loading=false;}
+ finally{loading=false;syncPagination();}
 }
 for(const action of ['start','stop'])el(action).addEventListener('click',async()=>{const buttons=[el('start'),el('stop')];buttons.forEach(b=>b.disabled=true);try{const r=await fetch('/api/teacher/window/'+action,{method:'POST'});if(!r.ok){const d=await r.json();throw Error(d.detail||'HTTP '+r.status);}const active=action==='start';el('collection-state').textContent=active?'수집 ON':'수집 OFF';el('collection-state').className=active?'badge connected':'badge';el('message').textContent=active?'수집을 시작했습니다. 기록은 조회 버튼으로 확인하세요.':'수집을 중지했습니다.';}catch(e){el('message').textContent='조작 실패: '+String(e);}finally{buttons.forEach(b=>b.disabled=false);}});
 el('filters').addEventListener('submit',e=>{e.preventDefault();void refresh();});el('filters').addEventListener('input',()=>{el('result-info').textContent='조건이 변경되었습니다. 조회를 눌러 적용하세요. 기존 표는 이전 조회 결과입니다.';});
@@ -144,8 +151,10 @@ el('class-auto').addEventListener('click',()=>saveAssignment(true));el('class-ca
 el('class-dialog').addEventListener('cancel',e=>{if(el('class-save').disabled)e.preventDefault();});
 void refreshClasses();
 
-el('page-prev').addEventListener('click',()=>{if(snapshot&&snapshot.page>1)void refresh(snapshot.page-1);});
-el('page-next').addEventListener('click',()=>{if(snapshot&&snapshot.page*100<snapshot.total)void refresh(snapshot.page+1);});
+for(const suffix of ['', '-bottom']){
+ el('page-prev'+suffix).addEventListener('click',()=>{if(snapshot&&snapshot.page>1)void refresh(snapshot.page-1,true);});
+ el('page-next'+suffix).addEventListener('click',()=>{if(snapshot&&snapshot.page*100<snapshot.total)void refresh(snapshot.page+1,true);});
+}
 for(const id of ['date-start','date-end'])el(id).addEventListener('change',()=>{el('range').value='custom';});
 const koreanDay=stamp=>new Date(stamp+9*3600000).toISOString().slice(0,10);
 el('date-start').value=koreanDay(Date.now()-6*86400000);el('date-end').value=koreanDay(Date.now());
